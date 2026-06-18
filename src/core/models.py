@@ -131,3 +131,7 @@ class ExecutionReport(BaseModel):
     executed_task_ids: List[str]
     agent_names: List[str]
     total_token_cost: int
+    unique_tasks: int
+    final_success_tasks: int
+    final_failed_tasks: int
+    retry_count: int
