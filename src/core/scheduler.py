@@ -1,6 +1,10 @@
 from typing import List
-from core.models import Task, StepSnapshot, TaskStatus
+from core.models import Task, StepSnapshot, TaskStatus, ExecutionReport
 from agents.base import BaseAgent
+
+
+def is_snapshot_succeed(snapshot: StepSnapshot):
+    return snapshot.result.status == TaskStatus.SUCCESS
 
 
 class ThinHarnessScheduler:
@@ -73,3 +77,29 @@ class ThinHarnessScheduler:
 
             pending_tasks = next_pending_tasks
         return results
+
+    def build_report(self, run_id):
+        run_snapshots = [
+            snapshot for snapshot in self.snapshots
+            if snapshot.run_id == run_id
+        ]
+        total_tasks = len(run_snapshots)
+        success_tasks = len(list(filter(is_snapshot_succeed, run_snapshots)))
+        failed_tasks = total_tasks - success_tasks
+        used_agent_names = set()
+
+        return ExecutionReport(
+            run_id=run_id,
+            total_tasks=total_tasks,
+            success_tasks=success_tasks,
+            failed_tasks=failed_tasks,
+            executed_task_ids=list(
+                map(lambda snapshot: snapshot.task.task_id, run_snapshots)),
+            agent_names=[
+                snap.agent_card.name for snap in run_snapshots
+                if snap.agent_card is not None
+                and not (snap.agent_card.name in used_agent_names
+                         or used_agent_names.add(snap.agent_card.name))
+            ],
+            total_token_cost=sum(snapshot.result.token_cost
+                                 for snapshot in run_snapshots))

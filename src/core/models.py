@@ -121,3 +121,13 @@ class StepSnapshot(BaseModel):
     # evaluation: Optional[EvaluationScore] = None
     # state_delta: Dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time)
+
+
+class ExecutionReport(BaseModel):
+    run_id: str
+    total_tasks: int
+    success_tasks: int
+    failed_tasks: int
+    executed_task_ids: List[str]
+    agent_names: List[str]
+    total_token_cost: int
