@@ -16,7 +16,7 @@ class ReviewAgent(BaseAgent):
         return AgentResult(
             agent_name=self.card.name,
             task_id=task.task_id,
-            status=TaskStatus.FAILED,
+            status=TaskStatus.SUCCESS,
             output={
                 "message":
                 "ReviewAgent received task",

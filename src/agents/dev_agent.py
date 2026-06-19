@@ -18,6 +18,7 @@ class DevAgent(BaseAgent):
                            status=TaskStatus.SUCCESS,
                            output={
                                "message": "DevAgent received task",
+                               "memories": task.metadata.get("memories", [])
                            },
                            token_cost=100,
                            error=None)

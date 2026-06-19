@@ -82,14 +82,13 @@ class AgentResult(BaseModel):
     error: Optional[str] = None
 
 
-# class MemoryRecord(BaseModel):
-#     memory_id: str
-#     memory_type: MemoryType
-#     content: str
-#     source: str
-#     importance: float = Field(default=0.5, ge=0.0, le=1.0)
-#     metadata: Dict[str, Any] = Field(default_factory=dict)
-#     created_at: float = Field(default_factory=time)
+class MemoryRecord(BaseModel):
+    memory_id: str
+    memory_type: MemoryType
+    content: str
+    source: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time)
 
 
 class EvaluationScore(BaseModel):
