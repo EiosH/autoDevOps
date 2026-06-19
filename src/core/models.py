@@ -77,7 +77,7 @@ class AgentResult(BaseModel):
     task_id: str
     status: TaskStatus
     output: Dict[str, Any] = Field(default_factory=dict)
-    # tool_calls: List[ToolCallRecord] = Field(default_factory=list)
+    tool_calls: List[ToolCallRecord] = Field(default_factory=list)
     token_cost: int = 0
     error: Optional[str] = None
 
