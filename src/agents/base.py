@@ -6,7 +6,6 @@ class BaseAgent(ABC):
     card: AgentCard
 
     def __init__(self, card) -> None:
-        super().__init__()
         self.card = card
 
     def can_handle(self, task: Task) -> bool:

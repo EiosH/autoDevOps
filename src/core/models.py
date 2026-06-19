@@ -62,14 +62,14 @@ class AgentCard(BaseModel):
     risk_level: RiskLevel = RiskLevel.LOW
 
 
-# class ToolCallRecord(BaseModel):
-#     tool_name: str
-#     arguments: Dict[str, Any] = Field(default_factory=dict)
-#     result: Optional[Dict[str, Any]] = None
-#     status: TaskStatus = TaskStatus.PENDING
-#     started_at: float = Field(default_factory=time)
-#     finished_at: Optional[float] = None
-#     error: Optional[str] = None
+class ToolCallRecord(BaseModel):
+    tool_name: str
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    result: Optional[Dict[str, Any]] = None
+    status: TaskStatus = TaskStatus.PENDING
+    started_at: float = Field(default_factory=time)
+    finished_at: Optional[float] = None
+    error: Optional[str] = None
 
 
 class AgentResult(BaseModel):
@@ -134,3 +134,10 @@ class ExecutionReport(BaseModel):
     final_success_tasks: int
     final_failed_tasks: int
     retry_count: int
+
+
+class ToolSpec(BaseModel):
+    name: str
+    description: str
+    risk_level: RiskLevel
+    input_schema: Dict[str, Any] = Field(default_factory=dict)
