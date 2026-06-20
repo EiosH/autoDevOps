@@ -1,10 +1,16 @@
 from agents.base import BaseAgent
 from core.models import AgentResult, AgentRole, RiskLevel, Task, TaskStatus, AgentCard
+from engine.llm import LLMProvider
 
 
 class TestAgent(BaseAgent):
+    llm: LLMProvider
 
-    def __init__(self, ) -> None:
+    def __init__(
+        self,
+        llm: LLMProvider,
+    ) -> None:
+        self.llm = llm
         super().__init__(
             AgentCard(
                 name="test_agent",

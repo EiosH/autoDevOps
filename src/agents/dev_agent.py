@@ -1,11 +1,18 @@
 from agents.base import BaseAgent
 from core.models import AgentResult, AgentRole, RiskLevel, Task, TaskStatus, AgentCard
 from tools.executor import ToolExecutor
+from engine.llm import LLMProvider
 
 
 class DevAgent(BaseAgent):
+    llm: LLMProvider
 
-    def __init__(self, tool_executor: ToolExecutor | None = None) -> None:
+    def __init__(
+        self,
+        llm: LLMProvider,
+        tool_executor: ToolExecutor | None = None,
+    ) -> None:
+        self.llm = llm
         self.tool_executor = tool_executor
         super().__init__(
             AgentCard(name="dev_agent",
