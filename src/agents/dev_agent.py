@@ -26,8 +26,7 @@ class DevAgent(BaseAgent):
                            output={
                                "message": "DevAgent received task",
                                "memories": task.metadata.get("memories", []),
-                               "tool_summary":
-                               [call.status for call in tool_calls]
+                               "tool_summary": [call for call in tool_calls],
                            },
                            token_cost=100,
                            error=None,
