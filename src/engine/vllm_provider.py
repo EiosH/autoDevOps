@@ -8,13 +8,24 @@ from engine.content_parse import parse_finish_output, parse_tool_call_from_conte
 from engine.llm import ChatWithToolsResult, LLMProvider, ToolCallRequest
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class vLLMProvider(LLMProvider):
     """OpenAI-compatible client for a local vLLM server."""
 
     BASE_URL = os.getenv("VLLM_BASE_URL", "http://127.0.0.1:8000/v1")
-    MODEL = os.getenv("VLLM_MODEL", "Qwen2.5-Coder-7B-Instruct-AWQ")
+    MODEL = os.getenv("VLLM_MODEL", "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ")
     API_KEY = os.getenv("VLLM_API_KEY", "")
     TIMEOUT = int(os.getenv("VLLM_TIMEOUT", "120"))
+    # Most vLLM deployments omit --enable-auto-tool-choice; client-side parsing avoids 400s.
+    NATIVE_TOOLS = _env_bool("VLLM_NATIVE_TOOLS", False)
+    # Only sent when NATIVE_TOOLS=true. Leave unset to omit tool_choice (vLLM default).
+    TOOL_CHOICE = os.getenv("VLLM_TOOL_CHOICE")
 
     def __init__(
         self,
@@ -46,8 +57,55 @@ class vLLMProvider(LLMProvider):
             timeout=kwargs.pop("timeout", self.TIMEOUT),
             **kwargs,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            detail = resp.text[:500]
+            raise requests.HTTPError(
+                f"{resp.status_code} {resp.reason} for {path}: {detail}",
+                response=resp,
+            )
         return resp.json()
+
+    @staticmethod
+    def _sanitize_messages(messages: List[dict]) -> List[dict]:
+        """vLLM rejects null assistant content; normalize for multi-turn tool loops."""
+        sanitized: List[dict] = []
+        for msg in messages:
+            cleaned = dict(msg)
+            if cleaned.get("role") == "assistant" and cleaned.get("content") is None:
+                cleaned["content"] = ""
+            sanitized.append(cleaned)
+        return sanitized
+
+    @staticmethod
+    def _tools_prompt(tools: List[dict]) -> str:
+        lines = [
+            "Available tools. To call a tool, respond with ONLY a JSON object:",
+            '{"name": "<tool_name>", "arguments": {<params>}}',
+            "",
+        ]
+        for tool in tools:
+            fn = tool.get("function", {})
+            lines.append(f"- {fn.get('name', '')}: {fn.get('description', '')}")
+            params = fn.get("parameters")
+            if params:
+                lines.append(
+                    f"  parameters schema: {json.dumps(params, ensure_ascii=False)}"
+                )
+        return "\n".join(lines)
+
+    def _inject_tools_prompt(
+        self, messages: List[dict], tools: List[dict]
+    ) -> List[dict]:
+        if not tools:
+            return list(messages)
+        prompt = self._tools_prompt(tools)
+        enriched = [dict(m) for m in messages]
+        for msg in enriched:
+            if msg.get("role") == "system":
+                msg["content"] = f"{msg.get('content', '')}\n\n{prompt}"
+                return enriched
+        enriched.insert(0, {"role": "system", "content": prompt})
+        return enriched
 
     def _model_payload(self, **extra: Any) -> dict:
         return {"model": self.MODEL, **extra}
@@ -62,7 +120,10 @@ class vLLMProvider(LLMProvider):
     def chat(self, messages: List[dict]) -> str:
         data = self._post(
             "/chat/completions",
-            self._model_payload(messages=messages, stream=False),
+            self._model_payload(
+                messages=self._sanitize_messages(messages),
+                stream=False,
+            ),
         )
         return data["choices"][0]["message"]["content"].strip()
 
@@ -124,14 +185,14 @@ class vLLMProvider(LLMProvider):
         except (requests.HTTPError, json.JSONDecodeError, KeyError, IndexError):
             pass
 
-        # vLLM fallback: guided JSON via extra_body
+        # vLLM fallback: guided JSON as a top-level field (not extra_body)
         try:
             data = self._post(
                 "/chat/completions",
                 self._model_payload(
                     messages=messages,
                     stream=False,
-                    extra_body={"guided_json": schema},
+                    guided_json=schema,
                 ),
             )
             content = data["choices"][0]["message"]["content"]
@@ -143,21 +204,7 @@ class vLLMProvider(LLMProvider):
         raw = self.chat(messages)
         return parse_finish_output(raw)
 
-    def chat_with_tools(
-        self,
-        messages: List[dict],
-        tools: List[dict],
-    ) -> ChatWithToolsResult:
-        data = self._post(
-            "/chat/completions",
-            self._model_payload(
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                stream=False,
-            ),
-        )
-
+    def _parse_chat_response(self, data: dict) -> ChatWithToolsResult:
         choices = data.get("choices", [])
         if not choices:
             return ChatWithToolsResult(
@@ -206,3 +253,31 @@ class vLLMProvider(LLMProvider):
             tool_calls=tool_calls,
             usage=usage,
         )
+
+    def chat_with_tools(
+        self,
+        messages: List[dict],
+        tools: List[dict],
+    ) -> ChatWithToolsResult:
+        sanitized = self._sanitize_messages(messages)
+
+        if self.NATIVE_TOOLS:
+            payload = self._model_payload(
+                messages=sanitized,
+                tools=tools,
+                stream=False,
+            )
+            # tool_choice="auto" returns 400 unless the server was started with
+            # --enable-auto-tool-choice; omit "auto" for compatibility.
+            if self.TOOL_CHOICE:
+                payload["tool_choice"] = self.TOOL_CHOICE
+            data = self._post("/chat/completions", payload)
+            return self._parse_chat_response(data)
+
+        # Client-side tool parsing (recommended for Qwen2.5-Coder + default vLLM).
+        api_messages = self._inject_tools_prompt(sanitized, tools)
+        data = self._post(
+            "/chat/completions",
+            self._model_payload(messages=api_messages, stream=False),
+        )
+        return self._parse_chat_response(data)

@@ -73,7 +73,7 @@ class AgentRunner:
                 messages.append(
                     {
                         "role": "assistant",
-                        "content": response.content,
+                        "content": response.content or "",
                         "tool_calls": [
                             {
                                 "id": call.id,
