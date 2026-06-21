@@ -11,7 +11,7 @@ Use the provided tools to complete the task. The model will invoke tools nativel
 Workflow:
 1. read_file — read upstream dev changes and source files
 2. write_patch — create or update test files
-3. run_tests — execute tests (pass test_path, e.g. parentDir/demo/tests/)
+3. run_tests — execute tests (pass test_path, e.g. /tests)
 
 If tests fail, read relevant files and fix tests or report failure clearly.
 """

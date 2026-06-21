@@ -33,7 +33,7 @@ def main():
     scheduler.register_agent(review)
     user_goal = "workspace 里面的游戏程序 index.html 帮我修复下，能让游戏跑通"
     run_id = "run1"
-    tasks = plan(user_goal)  # 先用硬编码
+    tasks = plan(user_goal, llm=ollama)
     snapshots = scheduler.execute_task_graph(run_id, tasks)
     report = scheduler.build_report(run_id)
     print(report)

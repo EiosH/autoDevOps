@@ -3,8 +3,6 @@ from abc import ABC, abstractmethod
 
 from core.models import AgentCard, AgentResult, Task
 
-from utils import get_cwd, get_project_root
-
 
 class BaseAgent(ABC):
     card: AgentCard
@@ -16,12 +14,9 @@ class BaseAgent(ABC):
         return task.agent_role == self.card.role
 
     def build_user_message(self, task: Task) -> str:
-        project_root = get_project_root()
         # Command line execution working directory: {cwd}.
         parts = [
-            f"""Goal: {task.goal} 
-        Auto-detected project root directory: {project_root}. 
-        If the user does not specify a directory, the default directory is the project root directory.
+            f"""Goal: {task.goal}
         """
         ]
 

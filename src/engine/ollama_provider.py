@@ -80,15 +80,26 @@ class OllamaProvider(LLMProvider):
     def structured_output(self, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         payload = {
             "model": self.MODEL,
-            "prompt": prompt,
-            "guided_decoding": {"type": "json", "json_schema": schema},
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            # 结构化输出配置
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "result_schema",  # 自定义名称，必填
+                    "schema": schema,
+                    "strict": True,  # 强制严格校验schema
+                },
+            },
         }
-        resp = requests.post(
-            f"{self.BASE_URL}/completions", headers=self._get_headers(), json=payload
-        )
+
+        url = f"{self.BASE_URL}/chat/completions"
+        resp = requests.post(url, headers=self._get_headers(), json=payload)
         resp.raise_for_status()
         data = resp.json()
-        raw_json_str = data["choices"][0]["text"].strip()
+
+        # OpenAI 标准返回结构
+        raw_json_str = data["choices"][0]["message"]["content"].strip()
         return json.loads(raw_json_str)
 
     def chat_with_tools(

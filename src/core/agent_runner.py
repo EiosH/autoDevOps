@@ -63,11 +63,11 @@ class AgentRunner:
         ]
 
         openai_tools = specs_to_openai_tools(tool_executor.registry, allowed_tools)
-        print("allowed tools:", [t["function"]["name"] for t in openai_tools])
+        # print("allowed tools:", [t["function"]["name"] for t in openai_tools])
         for _ in range(max_steps):
             response = llm.chat_with_tools(messages, openai_tools)
             token_cost += response.usage.get("total_tokens", 0)
-            print("response.tool_calls", response.tool_calls)
+            # print("response.tool_calls", response.tool_calls)
 
             if response.tool_calls:
                 messages.append(
@@ -102,7 +102,6 @@ class AgentRunner:
                         )
                     else:
                         record = tool_executor.execute(call.name, **call.arguments)
-                        print("record", record)
                     tool_calls_log.append(record)
                     messages.append(
                         {
@@ -115,8 +114,8 @@ class AgentRunner:
                     )
                 continue
 
-            print("response content:", response.content)
-            print("response called tools:", response.tool_calls)
+            # print("response content:", response.content)
+            # print("response called tools:", response.tool_calls)
             if response.content:
                 output = parse_finish_output(response.content)
                 if is_valid_finish_output(output, finish_schema):
