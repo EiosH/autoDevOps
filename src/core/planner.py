@@ -120,6 +120,8 @@ def plan(goal: str, llm: LLMProvider) -> list[Task]:
     prompt = PLANNER_PROMPT_TEMPLATE.format(goal=goal, project_root=project_root)
     parsed = llm.structured_output(prompt, PLAN_SCHEMA)
     tasks = _parsed_to_tasks(parsed, root_id)
-    print("tasks", tasks)
+    for task, i in tasks:
+        print(f"Task{i}: goal={task.goal} agentRole={task.agent_role} ")
+        print(f"")
     validate_task_graph(tasks)
     return tasks

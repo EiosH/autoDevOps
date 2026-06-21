@@ -67,7 +67,6 @@ class AgentRunner:
         for _ in range(max_steps):
             response = llm.chat_with_tools(messages, openai_tools)
             token_cost += response.usage.get("total_tokens", 0)
-            # print("response.tool_calls", response.tool_calls)
 
             if response.tool_calls:
                 messages.append(
@@ -102,6 +101,9 @@ class AgentRunner:
                         )
                     else:
                         record = tool_executor.execute(call.name, **call.arguments)
+                        print(
+                            f"call tool: name:{call.name} argument:{call.arguments}",
+                        )
                     tool_calls_log.append(record)
                     messages.append(
                         {
