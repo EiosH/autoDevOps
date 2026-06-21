@@ -23,7 +23,7 @@ class ThinHarnessScheduler:
     max_retries: int
     memory_store: MemoryStore | None
 
-    def __init__(self, max_retries=2, memory_store=None):
+    def __init__(self, max_retries=10, memory_store=None):
         self.agents = []
         self.snapshots = []
         self.max_retries = max_retries
