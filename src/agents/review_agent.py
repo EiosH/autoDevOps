@@ -1,51 +1,89 @@
 from agents.base import BaseAgent
-from core.models import AgentResult, AgentRole, RiskLevel, Task, TaskStatus, AgentCard
+from core.agent_runner import AgentRunner
+from core.models import AgentCard, AgentResult, AgentRole, RiskLevel, Task, TaskStatus
 from engine.llm import LLMProvider
+from tools.executor import ToolExecutor
+
+REVIEW_SYSTEM_PROMPT = """You are a code review agent.
+
+Use the provided tools to complete the task. The model will invoke tools natively.
+
+Workflow:
+1. git_diff — inspect all changes
+2. read_file — read specific files if needed
+
+Do NOT modify files. Review for correctness, maintainability, and completeness.
+Mark approved=false if there are high-severity issues.
+"""
+
+REVIEW_FINISH_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "approved": {"type": "boolean"},
+        "issues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "enum": ["high", "medium", "low"],
+                    },
+                    "file": {"type": "string"},
+                    "comment": {"type": "string"},
+                },
+                "required": ["severity", "comment"],
+            },
+        },
+        "summary": {"type": "string"},
+    },
+    "required": ["approved", "issues", "summary"],
+}
 
 
 class ReviewAgent(BaseAgent):
     llm: LLMProvider
+    tool_executor: ToolExecutor
+    runner: AgentRunner
 
     def __init__(
         self,
         llm: LLMProvider,
+        tool_executor: ToolExecutor,
+        runner: AgentRunner | None = None,
     ) -> None:
         self.llm = llm
+        self.tool_executor = tool_executor
+        self.runner = runner or AgentRunner()
         super().__init__(
-            AgentCard(name="review_agent",
-                      role=AgentRole.REVIEW,
-                      capabilities=["code_review", "risk_analysis"],
-                      tools=["read_file", "git_diff"],
-                      risk_level=RiskLevel.LOW))
+            AgentCard(
+                name="review_agent",
+                role=AgentRole.REVIEW,
+                capabilities=["code_review", "risk_analysis"],
+                tools=["read_file", "git_diff"],
+                risk_level=RiskLevel.LOW,
+            )
+        )
 
     def run(self, task: Task) -> AgentResult:
-        goal = task.goal.lower()
-        points = ["Correctness", "Maintainability"]
-        if "security" in goal or "auth" in goal:
-            points.append("Security")
-        if "performance" in goal or "slow" in goal:
-            points.append("Performance")
-        if "readme" in goal or "docs" in goal:
-            points.append("Documentation")
-
-        detailed = []
-        for p in points:
-            if p == "Correctness":
-                detailed.append("Verify logic against spec and edge cases")
-            if p == "Maintainability":
-                detailed.append("Check naming, modularity, and comments")
-            if p == "Security":
-                detailed.append("Check input validation and auth boundaries")
-            if p == "Performance":
-                detailed.append("Identify hot paths and expensive calls")
-            if p == "Documentation":
-                detailed.append("Ensure examples and usage are clear")
-
-        return AgentResult(agent_name=self.card.name,
-                           task_id=task.task_id,
-                           status=TaskStatus.SUCCESS,
-                           output={
-                               "message": "Review points generated",
-                               "review_focus": detailed
-                           },
-                           token_cost=30)
+        result = self.runner.run_loop(
+            llm=self.llm,
+            tool_executor=self.tool_executor,
+            allowed_tools=self.card.tools,
+            task=task,
+            agent_name=self.card.name,
+            system_prompt=REVIEW_SYSTEM_PROMPT,
+            user_message=self.build_user_message(task),
+            finish_schema=REVIEW_FINISH_SCHEMA,
+        )
+        if (
+            result.status == TaskStatus.SUCCESS
+            and result.output.get("approved") is False
+        ):
+            has_high = any(
+                issue.get("severity") == "high"
+                for issue in result.output.get("issues", [])
+            )
+            if has_high:
+                result.status = TaskStatus.FAILED
+        return result

@@ -20,9 +20,22 @@ class ReadFileTool(BaseTool):
                      }))
 
     def run(self, **kwargs):
+        import os
+
         path = kwargs["path"]
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"No such file: {path}")
+
         with open(path, "r", encoding="utf-8") as f:
-            return {"path": path, "content": f.read()}
+            content = f.read()
+
+        result = {"path": path, "content": content, "exists": True}
+        if content == "":
+            result["note"] = (
+                "File exists but is empty (0 bytes). "
+                "This is NOT the same as 'file does not exist'."
+            )
+        return result
 
 
 class WritePatchTool(BaseTool):
@@ -35,8 +48,12 @@ class WritePatchTool(BaseTool):
                      input_schema={
                          "type": "object",
                          "properties": {
-                             "path": {"type": "string"},
-                             "content": {"type": "string"}
+                             "path": {
+                                 "type": "string"
+                             },
+                             "content": {
+                                 "type": "string"
+                             }
                          },
                          "required": ["path", "content"]
                      }))
@@ -59,7 +76,10 @@ class GitDiffTool(BaseTool):
                      input_schema={
                          "type": "object",
                          "properties": {
-                             "file_path": {"type": "string", "description": "optional specific file"}
+                             "file_path": {
+                                 "type": "string",
+                                 "description": "optional specific file"
+                             }
                          }
                      }))
 
@@ -70,7 +90,10 @@ class GitDiffTool(BaseTool):
         if file_path:
             cmd.append(file_path)
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=".")
-        return {"diff": result.stdout, "error": result.stderr if result.returncode != 0 else None}
+        return {
+            "diff": result.stdout,
+            "error": result.stderr if result.returncode != 0 else None
+        }
 
 
 class RunTestsTool(BaseTool):
@@ -83,7 +106,10 @@ class RunTestsTool(BaseTool):
                      input_schema={
                          "type": "object",
                          "properties": {
-                             "test_path": {"type": "string", "description": "path to test file or dir"}
+                             "test_path": {
+                                 "type": "string",
+                                 "description": "path to test file or dir"
+                             }
                          }
                      }))
 
@@ -92,7 +118,11 @@ class RunTestsTool(BaseTool):
         test_path = kwargs.get("test_path", "tests/")
         cmd = ["python", "-m", "pytest", test_path, "-v"]
         result = subprocess.run(cmd, capture_output=True, text=True, cwd=".")
-        return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode}
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        }
 
 
 class ShellExecTool(BaseTool):
@@ -105,7 +135,9 @@ class ShellExecTool(BaseTool):
                      input_schema={
                          "type": "object",
                          "properties": {
-                             "command": {"type": "string"}
+                             "command": {
+                                 "type": "string"
+                             }
                          },
                          "required": ["command"]
                      }))
@@ -113,5 +145,14 @@ class ShellExecTool(BaseTool):
     def run(self, **kwargs):
         import subprocess
         command = kwargs["command"]
-        result = subprocess.run(command, shell=True, capture_output=True, text=True, cwd=".", timeout=30)
-        return {"stdout": result.stdout, "stderr": result.stderr, "returncode": result.returncode}
+        result = subprocess.run(command,
+                                shell=True,
+                                capture_output=True,
+                                text=True,
+                                cwd=".",
+                                timeout=30)
+        return {
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        }

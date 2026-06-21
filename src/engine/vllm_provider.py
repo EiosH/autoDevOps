@@ -1,6 +1,7 @@
 import requests
 import json
-from engine.llm import LLMProvider
+from engine.content_parse import parse_tool_call_from_content
+from engine.llm import LLMProvider, ChatWithToolsResult, ToolCallRequest
 from typing import List, Dict, Any, Generator
 
 
@@ -90,3 +91,64 @@ class vLLMProvider(LLMProvider):
         data = resp.json()
         raw_json_str = data["choices"][0]["text"].strip()
         return json.loads(raw_json_str)
+
+    def chat_with_tools(
+        self,
+        messages: List[dict],
+        tools: List[dict],
+    ) -> ChatWithToolsResult:
+        payload = {
+            "model": "auto",
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": "auto",
+        }
+        resp = requests.post(
+            f"{self.BASE_URL}/chat/completions",
+            headers=self._get_headers(),
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        message = data["choices"][0].get("message", {})
+        usage = data.get("usage", {})
+
+        tool_calls = []
+        for raw_call in message.get("tool_calls") or []:
+            fn = raw_call.get("function", {})
+            args_raw = fn.get("arguments", "{}")
+            try:
+                arguments = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+            except json.JSONDecodeError:
+                arguments = {}
+            tool_calls.append(
+                ToolCallRequest(
+                    id=raw_call.get("id", ""),
+                    name=fn.get("name", ""),
+                    arguments=arguments or {},
+                )
+            )
+
+        content = message.get("content")
+        if isinstance(content, str):
+            content = content.strip() or None
+        else:
+            content = None
+
+        if content and not tool_calls:
+            func_data = parse_tool_call_from_content(content)
+            if func_data:
+                tool_calls.append(
+                    ToolCallRequest(
+                        id="local_tool_call",
+                        name=func_data["name"],
+                        arguments=func_data["arguments"],
+                    )
+                )
+                content = None
+
+        return ChatWithToolsResult(
+            content=content,
+            tool_calls=tool_calls,
+            usage=usage,
+        )
