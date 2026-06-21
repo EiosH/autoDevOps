@@ -63,6 +63,8 @@ class AgentRunner:
         ]
 
         openai_tools = specs_to_openai_tools(tool_executor.registry, allowed_tools)
+        print(f"\nagent {agent_name}----------")
+
         # print("allowed tools:", [t["function"]["name"] for t in openai_tools])
         for _ in range(max_steps):
             response = llm.chat_with_tools(messages, openai_tools)
@@ -141,6 +143,8 @@ class AgentRunner:
                     }
                 )
                 continue
+
+        print(f"------------")
 
         return AgentResult(
             agent_name=agent_name,
