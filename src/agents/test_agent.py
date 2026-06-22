@@ -1,6 +1,14 @@
 from agents.base import BaseAgent
 from core.agent_runner import AgentRunner
-from core.models import AgentCard, AgentResult, AgentRole, RiskLevel, Task, TaskStatus
+from core.models import (
+    AgentCard,
+    AgentResult,
+    AgentRole,
+    RiskLevel,
+    RunContext,
+    Task,
+    TaskStatus,
+)
 from engine.llm import LLMProvider
 from tools.executor import ToolExecutor
 
@@ -51,7 +59,7 @@ class TestAgent(BaseAgent):
             )
         )
 
-    def run(self, task: Task) -> AgentResult:
+    def run(self, task: Task, ctx: RunContext) -> AgentResult:
         result = self.runner.run_loop(
             llm=self.llm,
             tool_executor=self.tool_executor,
@@ -59,8 +67,9 @@ class TestAgent(BaseAgent):
             task=task,
             agent_name=self.card.name,
             system_prompt=TEST_SYSTEM_PROMPT,
-            user_message=self.build_user_message(task),
+            user_message=self.build_user_message(task, ctx),
             finish_schema=TEST_FINISH_SCHEMA,
+            ctx=ctx,
         )
         if result.status == TaskStatus.SUCCESS and result.output.get("passed") is False:
             result.status = TaskStatus.FAILED

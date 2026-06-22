@@ -50,11 +50,11 @@ Rules:
 3. dependencies must only reference task_ids in the same array
 4. Use a DAG: dev first; test/review depend on prior steps when included
 5. Each goal should be specific and actionable for that agent
-
-Example for "fix workspace/index.html game":
-tasks = [
-  {{"task_id": "t1-dev", "goal": "Read and fix workspace/index.html so the game runs", "agent_role": "dev", "dependencies": [], "priority": 3}}
-]
+6. Preserve ALL deliverables from user goal in at least one dev task goal
+7. Greenfield features: prefer ONE dev task that creates ALL files, then ONE review task
+8. Do NOT split "create dir", "write html", "write js" into separate dev tasks
+9. Each dev task goal MUST list concrete file paths
+10. If user mentions review/testing, add exactly one review task — no refactor/cleanup unless asked
 """
 
 

@@ -1,18 +1,24 @@
 from agents.base import BaseAgent
 from core.agent_runner import AgentRunner
-from core.models import AgentCard, AgentResult, AgentRole, RiskLevel, Task
+from core.models import AgentCard, AgentResult, AgentRole, RiskLevel, RunContext, Task
 from engine.llm import LLMProvider
 from tools.executor import ToolExecutor
 
 DEV_SYSTEM_PROMPT = """You are a dev agent.
 
-Use the provided tools to complete the task. The model will invoke tools natively.
+Mandatory workflow:
+1. read_file — ALWAYS read target files before writing (even for new files, check if path exists)
+2. write_patch — write COMPLETE runnable content; never leave placeholders
+3. read_file — verify each written file is non-empty
+4. git_diff — confirm changes
 
-Workflow:
-1. read_file — inspect existing files before editing
-2. write_patch — write full file content (minimal, complete, runnable)
-3. git_diff — verify changes after writing
-4. shell_exec — list files only when needed
+Completion rules (you MUST satisfy ALL before finish JSON):
+- Every file listed in the goal must exist on disk
+- You must have at least one successful write_patch per changed file
+- For browser games: HTML must include game UI; JS must contain game logic (not just comments)
+- Do NOT return finish JSON until verification reads succeed
+
+If the goal mentions multiple files, write ALL of them in this task.
 
 """
 
@@ -53,7 +59,7 @@ class DevAgent(BaseAgent):
             )
         )
 
-    def run(self, task: Task) -> AgentResult:
+    def run(self, task: Task, ctx: RunContext) -> AgentResult:
         return self.runner.run_loop(
             llm=self.llm,
             tool_executor=self.tool_executor,
@@ -61,6 +67,7 @@ class DevAgent(BaseAgent):
             task=task,
             agent_name=self.card.name,
             system_prompt=DEV_SYSTEM_PROMPT,
-            user_message=self.build_user_message(task),
+            user_message=self.build_user_message(task, ctx),
             finish_schema=DEV_FINISH_SCHEMA,
+            ctx=ctx,
         )

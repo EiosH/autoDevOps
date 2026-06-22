@@ -1,4 +1,6 @@
+import json
 from typing import List
+
 from core.models import (
     Task,
     StepSnapshot,
@@ -7,8 +9,8 @@ from core.models import (
     AgentResult,
     MemoryRecord,
     MemoryType,
+    RunContext,
 )
-from memory.store import MemoryStore
 from agents.base import BaseAgent
 
 
@@ -21,13 +23,11 @@ class ThinHarnessScheduler:
     agents: List[BaseAgent]
     snapshots: List[StepSnapshot]
     max_retries: int
-    memory_store: MemoryStore | None
 
-    def __init__(self, max_retries=10, memory_store=None):
+    def __init__(self, max_retries=10):
         self.agents = []
         self.snapshots = []
         self.max_retries = max_retries
-        self.memory_store = memory_store
 
     def register_agent(self, agent: BaseAgent):
         self.agents.append(agent)
@@ -38,27 +38,10 @@ class ThinHarnessScheduler:
                 return agent
         raise ValueError(f"No agent found for role: {task.agent_role}")
 
-    def _inject_upstream(self, task: Task) -> Task:
-        if not task.dependencies:
-            return task
-        upstream = {}
-        for dep_id in task.dependencies:
-            for snap in reversed(self.snapshots):
-                if (
-                    snap.task.task_id == dep_id
-                    and snap.result.status == TaskStatus.SUCCESS
-                ):
-                    upstream[dep_id] = snap.result.output
-                    break
-        task.metadata["upstream"] = upstream
-        return task
-
-    def execute_task(self, run_id, task, attempt=1):
+    def execute_task(self, run_id, task, ctx: RunContext, attempt=1):
         agent = self.find_agent(task)
-        task = self._inject_memories(task, agent)
-        task = self._inject_upstream(task)
         try:
-            result = agent.run(task)
+            result = agent.run(task, ctx)
         except Exception as e:
             result = AgentResult(
                 agent_name=agent.card.name,
@@ -75,31 +58,34 @@ class ThinHarnessScheduler:
             agent_card=agent.card,
             result=result,
         )
+        ctx.snapshots.append(snapshot)
         self.snapshots.append(snapshot)
+        if result.status == TaskStatus.SUCCESS:
+            self._record_episodic(ctx, snapshot)
         if result.status == TaskStatus.FAILED and attempt <= self.max_retries:
-            return self.execute_task(run_id, task, attempt + 1)
-        self._record_success_memory(snapshot)
+            return self.execute_task(run_id, task, ctx, attempt + 1)
         return snapshot
 
-    def is_task_ready(self, task: Task):
+    def is_task_ready(self, task: Task, ctx: RunContext):
         if not task.dependencies:
             return True
         finished_success_task_ids = {
             snapshot.task.task_id
-            for snapshot in self.snapshots
+            for snapshot in ctx.snapshots
             if snapshot.result.status == TaskStatus.SUCCESS
         }
         return all(dep in finished_success_task_ids for dep in task.dependencies)
 
-    def execute_task_graph(self, run_id, tasks: List[Task]):
+    def execute_task_graph(self, run_id, tasks: List[Task], user_goal: str = ""):
+        ctx = RunContext(run_id=run_id, user_goal=user_goal)
         pending_tasks = list(tasks)
         results = []
         while pending_tasks:
             next_pending_tasks = []
             progressed = False
             for task in pending_tasks:
-                if self.is_task_ready(task):
-                    snapshot = self.execute_task(run_id, task)
+                if self.is_task_ready(task, ctx):
+                    snapshot = self.execute_task(run_id, task, ctx)
                     results.append(snapshot)
                     progressed = True
                 else:
@@ -156,33 +142,26 @@ class ThinHarnessScheduler:
             retry_count=total_tasks - unique_tasks,
         )
 
-    def _record_success_memory(self, snapshot: StepSnapshot):
-        if self.memory_store and is_snapshot_succeed(snapshot):
-            run_id, task_id, agent_name = (
-                snapshot.run_id,
-                snapshot.task.task_id,
-                snapshot.agent_card.name,
+    def _record_episodic(self, ctx: RunContext, snapshot: StepSnapshot):
+        content = json.dumps(
+            {
+                "task_id": snapshot.task.task_id,
+                "goal": snapshot.task.goal,
+                "agent": snapshot.agent_card.name,
+                "summary": snapshot.result.output.get("summary"),
+                "output": snapshot.result.output,
+            },
+            ensure_ascii=False,
+        )
+        ctx.episodic.append(
+            MemoryRecord(
+                memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:episodic",
+                memory_type=MemoryType.EPISODIC,
+                content=content,
+                source="scheduler",
+                metadata={
+                    "task_id": snapshot.task.task_id,
+                    "agent_name": snapshot.agent_card.name,
+                },
             )
-            self.memory_store.add(
-                MemoryRecord(
-                    memory_id=f"{run_id}:{snapshot.task.task_id}:memory",
-                    memory_type=MemoryType.EPISODIC,
-                    content=f"Task {snapshot.task.task_id} completed by {snapshot.agent_card.name}",
-                    source="scheduler",
-                    metadata={
-                        "run_id": run_id,
-                        "task_id": task_id,
-                        "agent_name": agent_name,
-                    },
-                )
-            )
-
-    def _inject_memories(self, task: Task, agent: BaseAgent):
-        if not self.memory_store:
-            return task
-        memories = [
-            memory.content
-            for memory in self.memory_store.find_by_agent_name(agent.card.name)
-        ]
-        task.metadata["memories"] = memories
-        return task
+        )

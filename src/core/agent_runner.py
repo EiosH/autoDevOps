@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import json
 
-from core.models import AgentResult, Task, TaskStatus, ToolCallRecord
+from core.models import AgentResult, RunContext, Task, TaskStatus, ToolCallRecord
 from engine.content_parse import (
     example_from_finish_schema,
     is_valid_finish_output,
@@ -45,6 +45,7 @@ class AgentRunner:
         system_prompt: str,
         user_message: str,
         finish_schema: dict,
+        ctx: RunContext | None = None,
         max_steps: int = 20,
     ) -> AgentResult:
         tool_calls_log = []
@@ -107,6 +108,8 @@ class AgentRunner:
                             f"call tool: name:{call.name} argument:{call.arguments}",
                         )
                     tool_calls_log.append(record)
+                    if ctx is not None:
+                        ctx.tool_trace.append(record)
                     messages.append(
                         {
                             "role": "tool",

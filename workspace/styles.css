@@ -1,0 +1,25 @@
+/* styles.css */
+body { background-color: #f4ede8; font-family: Arial, sans-serif; }
+
+.minesweeper-container {
+  width: 300px;
+  margin: 50px auto;
+  background-color: #c2b4a6;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+table { width: 100%; text-align: center; }
+
+cell, td, button {
+  border: 1px solid black;
+  height: 35px;
+  line-height: 35px;
+  font-size: 20px;
+}
+
+.cell-covered { cursor: pointer; }
+
+.cell-revealed.mine { background-color: red; }
+
+.cell-revealed.number:hover { background-color: #e8d7b4; }

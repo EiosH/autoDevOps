@@ -101,16 +101,6 @@ class EvaluationScore(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
-# class ExecutionContext(BaseModel):
-#     run_id: str
-#     user_goal: str
-#     task_graph: Optional[TaskGraph] = None
-#     memories: List[MemoryRecord] = Field(default_factory=list)
-#     global_state: Dict[str, Any] = Field(default_factory=dict)
-#     total_token_cost: int = 0
-#     started_at: float = Field(default_factory=time)
-
-
 class StepSnapshot(BaseModel):
     step_id: str
     run_id: str
@@ -120,6 +110,27 @@ class StepSnapshot(BaseModel):
     # evaluation: Optional[EvaluationScore] = None
     # state_delta: Dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time)
+
+
+class RunContext(BaseModel):
+    run_id: str
+    user_goal: str = ""
+    snapshots: List[StepSnapshot] = Field(default_factory=list)
+    tool_trace: List[ToolCallRecord] = Field(default_factory=list)
+    episodic: List[MemoryRecord] = Field(default_factory=list)
+    workspace_state: Dict[str, Any] = Field(default_factory=dict)
+
+    def get_upstream(self, task: Task) -> Dict[str, Any]:
+        upstream: Dict[str, Any] = {}
+        for dep_id in task.dependencies:
+            for snap in reversed(self.snapshots):
+                if (
+                    snap.task.task_id == dep_id
+                    and snap.result.status == TaskStatus.SUCCESS
+                ):
+                    upstream[dep_id] = snap.result.output
+                    break
+        return upstream
 
 
 class ExecutionReport(BaseModel):

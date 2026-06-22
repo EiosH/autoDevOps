@@ -1,5 +1,4 @@
-import json
-from core.scheduler import ThinHarnessScheduler, MemoryStore
+from core.scheduler import ThinHarnessScheduler
 from agents import DevAgent, ReviewAgent, TestAgent
 from tools import (
     ToolRegistry,
@@ -24,8 +23,8 @@ def main():
     toolRegistry.register(RunTestsTool())
     toolRegistry.register(ShellExecTool())
     toolExecutor = ToolExecutor(toolRegistry)
-    # llm = OllamaProvider()
-    llm = vLLMProvider()
+    llm = OllamaProvider()
+    # llm = vLLMProvider()
     devAgent = DevAgent(llm, toolExecutor)
     test = TestAgent(llm, toolExecutor)
     review = ReviewAgent(llm, toolExecutor)
@@ -33,10 +32,11 @@ def main():
     scheduler.register_agent(devAgent)
     scheduler.register_agent(test)
     scheduler.register_agent(review)
-    user_goal = "在根目录里新建 workspace 文件夹，在里面实现 workspace/index.html 和 workspace/index.js 文件，做一个扫雷小游戏。实现完成后检查代码，确保不出问题"
+    # user_goal = "在根目录里新建 workspace 文件夹，在里面实现 workspace/index.html 和 workspace/index.js 文件，做一个扫雷小游戏。实现完成后检查代码，确保不出问题"
+    user_goal = "读取 workspace 下的 index.html、index.js文件，合并成一个，并且检查逻辑，然后完善"
     run_id = "run1"
     tasks = plan(user_goal, llm=llm)
-    snapshots = scheduler.execute_task_graph(run_id, tasks)
+    snapshots = scheduler.execute_task_graph(run_id, tasks, user_goal=user_goal)
     report = scheduler.build_report(run_id)
     print(report)
 
