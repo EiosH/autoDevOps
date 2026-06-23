@@ -115,8 +115,9 @@ class AgentRunner:
                     tool_calls_log.append(record)
                     tool_calls_log.extend(inner_calls)
                     if ctx is not None:
-                        ctx.tool_trace.append(record)
-                        ctx.tool_trace.extend(inner_calls)
+                        ctx.record_tool_call(record, source=agent_name)
+                        for inner in inner_calls:
+                            ctx.record_tool_call(inner, source=agent_name)
                     messages.append(
                         {
                             "role": "tool",

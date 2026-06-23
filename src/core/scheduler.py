@@ -8,8 +8,6 @@ from core.models import (
     TaskStatus,
     ExecutionReport,
     AgentResult,
-    MemoryRecord,
-    MemoryType,
     RunContext,
 )
 from agents.base import BaseAgent
@@ -101,24 +99,21 @@ class ThinHarnessScheduler:
         return False
 
     def _record_review_feedback(self, ctx: RunContext, snapshot: StepSnapshot):
-        ctx.episodic.append(
-            MemoryRecord(
-                memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:review_feedback",
-                memory_type=MemoryType.EPISODIC,
-                content=json.dumps(
-                    {
-                        "type": "review_feedback",
-                        "task_id": snapshot.task.task_id,
-                        "approved": snapshot.result.output.get("approved"),
-                        "issues": snapshot.result.output.get("issues", []),
-                        "summary": snapshot.result.output.get("summary"),
-                        "error": snapshot.result.error,
-                    },
-                    ensure_ascii=False,
-                ),
-                source="scheduler",
-                metadata={"task_id": snapshot.task.task_id},
-            )
+        ctx.add_episodic(
+            content=json.dumps(
+                {
+                    "type": "review_feedback",
+                    "task_id": snapshot.task.task_id,
+                    "approved": snapshot.result.output.get("approved"),
+                    "issues": snapshot.result.output.get("issues", []),
+                    "summary": snapshot.result.output.get("summary"),
+                    "error": snapshot.result.error,
+                },
+                ensure_ascii=False,
+            ),
+            source="scheduler",
+            memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:review_feedback",
+            metadata={"task_id": snapshot.task.task_id, "kind": "review_feedback"},
         )
 
     def _run_dag(self, run_id: str, tasks: List[Task], ctx: RunContext):
@@ -247,15 +242,13 @@ class ThinHarnessScheduler:
             },
             ensure_ascii=False,
         )
-        ctx.episodic.append(
-            MemoryRecord(
-                memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:episodic",
-                memory_type=MemoryType.EPISODIC,
-                content=content,
-                source="scheduler",
-                metadata={
-                    "task_id": snapshot.task.task_id,
-                    "agent_name": snapshot.agent_card.name,
-                },
-            )
+        ctx.add_episodic(
+            content=content,
+            source="scheduler",
+            memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:episodic",
+            metadata={
+                "task_id": snapshot.task.task_id,
+                "agent_name": snapshot.agent_card.name,
+                "kind": "step_summary",
+            },
         )

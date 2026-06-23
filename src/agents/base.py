@@ -27,16 +27,19 @@ class BaseAgent(ABC):
             )
         if ctx.episodic:
             parts.append(
-                "Prior steps in this run:\n"
+                "Episodic memory (prior steps in this run):\n"
                 + "\n".join(record.content for record in ctx.episodic)
             )
-        if ctx.tool_trace:
-            trace_lines = [
-                f"- {r.tool_name}({json.dumps(r.arguments, ensure_ascii=False)})"
-                f" -> {r.status.value}"
-                for r in ctx.tool_trace[-20:]
-            ]
-            parts.append("Prior tool calls:\n" + "\n".join(trace_lines))
+        tool_records = ctx.recent_tool_calls()
+        if tool_records:
+            trace_lines = []
+            for record in tool_records:
+                payload = json.loads(record.content)
+                trace_lines.append(
+                    f"- {payload['tool_name']}({json.dumps(payload['arguments'], ensure_ascii=False)})"
+                    f" -> {payload['status']}"
+                )
+            parts.append("Short-term memory (recent tool calls):\n" + "\n".join(trace_lines))
         return "\n\n".join(parts)
 
     @abstractmethod

@@ -1,7 +1,7 @@
-from core.models import MemoryRecord
+from core.models import MemoryRecord, MemoryType
 
 
-class MemoryStore():
+class MemoryStore:
     records: list[MemoryRecord]
 
     def __init__(self):
@@ -12,6 +12,9 @@ class MemoryStore():
 
     def list_all(self):
         return self.records
+
+    def list_by_type(self, memory_type: MemoryType):
+        return [record for record in self.records if record.memory_type == memory_type]
 
     def find_by_task_id(self, task_id: str):
         return [

@@ -1,13 +1,19 @@
 // src/Game.js
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 
 const Game = () => {
-  const [gameOver, setGameOver] = useState(false);
+  useEffect(() => {
+    const gameContainer = document.querySelector('div[tabindex');
+    if (gameContainer) {
+      // Your game setup logic here
+    }
+  }, []);
 
   return (
-    <div>
-      {!gameOver ? (
-        <button onClick={() => setGameOver(true)}>Start Game</button>
-      ) : null}
-      {gameOver && <p>Game Over</p>}
-      <div onKeyDown={(e) => e.key === ' ' && setGameOver(false)} tabIndex=
+    <div tabIndex="0">
+      {/* Game content */}
+    </div>
+  );
+};
+
+export default Game;

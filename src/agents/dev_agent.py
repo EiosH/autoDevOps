@@ -16,8 +16,9 @@ Available skills:
 
 Workflow:
 1. Check episodic memory for review_feedback — if present, fix all listed issues
-2. Pick code_write OR code_refactor based on the task
-3. Return finish JSON with changed_files, deleted_files (if any), and summary
+2. Use short-term memory (recent tool calls) to avoid repeating failed actions
+3. Pick code_write OR code_refactor based on the task
+4. Return finish JSON with changed_files, deleted_files (if any), and summary
 """
 
 DEV_FINISH_SCHEMA = {

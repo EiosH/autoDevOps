@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 from time import time
 from typing import Any, Dict, List, Optional
@@ -116,9 +117,67 @@ class RunContext(BaseModel):
     run_id: str
     user_goal: str = ""
     snapshots: List[StepSnapshot] = Field(default_factory=list)
-    tool_trace: List[ToolCallRecord] = Field(default_factory=list)
+    short_term: List[MemoryRecord] = Field(default_factory=list)
     episodic: List[MemoryRecord] = Field(default_factory=list)
     workspace_state: Dict[str, Any] = Field(default_factory=dict)
+
+    def add_short_term(
+        self,
+        content: str,
+        source: str,
+        *,
+        memory_id: str | None = None,
+        metadata: Dict[str, Any] | None = None,
+    ) -> MemoryRecord:
+        record = MemoryRecord(
+            memory_id=memory_id or f"{self.run_id}:st:{len(self.short_term)}",
+            memory_type=MemoryType.SHORT_TERM,
+            content=content,
+            source=source,
+            metadata=metadata or {},
+        )
+        self.short_term.append(record)
+        return record
+
+    def add_episodic(
+        self,
+        content: str,
+        source: str,
+        *,
+        memory_id: str,
+        metadata: Dict[str, Any] | None = None,
+    ) -> MemoryRecord:
+        record = MemoryRecord(
+            memory_id=memory_id,
+            memory_type=MemoryType.EPISODIC,
+            content=content,
+            source=source,
+            metadata=metadata or {},
+        )
+        self.episodic.append(record)
+        return record
+
+    def record_tool_call(self, record: ToolCallRecord, source: str) -> MemoryRecord:
+        return self.add_short_term(
+            content=json.dumps(
+                {
+                    "tool_name": record.tool_name,
+                    "arguments": record.arguments,
+                    "status": record.status.value,
+                    "result": record.result,
+                    "error": record.error,
+                },
+                ensure_ascii=False,
+            ),
+            source=source,
+            metadata={"kind": "tool_call", "tool_name": record.tool_name},
+        )
+
+    def recent_tool_calls(self, limit: int = 20) -> List[MemoryRecord]:
+        tool_records = [
+            r for r in self.short_term if r.metadata.get("kind") == "tool_call"
+        ]
+        return tool_records[-limit:]
 
     def get_upstream(self, task: Task) -> Dict[str, Any]:
         upstream: Dict[str, Any] = {}
