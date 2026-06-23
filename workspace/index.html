@@ -15,12 +15,13 @@
 var canvas = document.getElementById('gameCanvas');
 var ctx = canvas.getContext('2d');
 
-var gridSize = 20;
-var canvasSize = canvas.width;
+const gridSize = 20;
+const canvasWidth = canvas.width;
+const canvasHeight = canvas.height;
 
 var snake = [{x: 160, y: 240}, {x: 140, y: 240}, {x: 120, y: 240}];
 var direction = 'RIGHT';
-var food = {x: Math.floor(Math.random() * (canvasSize / gridSize)) * gridSize, y: Math.floor(Math.random() * (canvasSize / gridSize)) * gridSize};
+var food = {x: Math.floor(Math.random() * (canvasWidth / gridSize)) * gridSize, y: Math.floor(Math.random() * (canvasHeight / gridSize)) * gridSize};
 
 function drawSnake() {
     ctx.fillStyle = 'lime';
@@ -53,7 +54,7 @@ function moveSnake() {
     }
 
     if (head.x === food.x && head.y === food.y) {
-        food = {x: Math.floor(Math.random() * (canvasSize / gridSize)) * gridSize, y: Math.floor(Math.random() * (canvasSize / gridSize)) * gridSize};
+        food = {x: Math.floor(Math.random() * (canvasWidth / gridSize)) * gridSize, y: Math.floor(Math.random() * (canvasHeight / gridSize)) * gridSize};
     } else {
         snake.pop();
     }
@@ -67,7 +68,7 @@ function moveSnake() {
 }
 
 function gameLoop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight);
     drawSnake();
     drawFood();
     moveSnake();
