@@ -2,7 +2,7 @@ from core.models import Task
 from core.models import AgentRole
 import uuid
 from engine.llm import LLMProvider
-from utils import get_project_root
+from utils.path_helper import get_cwd
 
 
 PLAN_SCHEMA = {
@@ -36,11 +36,11 @@ User goal:
 {goal}
 
 Project context:
-    Auto-detected project root directory: {project_root}. 
-    If the user does not specify a directory, the default directory is the project root directory.
+    Current working directory: {working_dir}
+    All file paths in task goals must be relative to this directory.
 
 Available agents (agent_role must be one of these):
-- dev: read/write code, fix bugs (skills: code_write)
+- dev: greenfield code (skills: code_write) or refactor existing code (skills: code_refactor)
 - test: run tests (skills: run_test) — skip if no tests apply
 - review: code review (skills: code_review)
 
@@ -54,7 +54,10 @@ Rules:
 7. Greenfield features: prefer ONE dev task that creates ALL files, then ONE review task
 8. Do NOT split "create dir", "write html", "write js" into separate dev tasks
 9. Each dev task goal MUST list concrete file paths
-10. If user mentions review/testing, add exactly one review task — no refactor/cleanup unless asked
+10. Use code_refactor dev goal when task involves merging, splitting, moving, or deleting files
+11. Use code_write dev goal for greenfield (0-to-1) creation
+12. ALWAYS add exactly one review task after dev task(s); review must depend on all dev tasks
+13. Add test task only if user explicitly mentions testing
 """
 
 
@@ -114,12 +117,44 @@ def _parsed_to_tasks(parsed: dict, root_id: str) -> list[Task]:
     return tasks
 
 
+def _ensure_review_task(tasks: list[Task], user_goal: str) -> list[Task]:
+    """Planner LLM may omit review; always append one after dev tasks."""
+    if any(t.agent_role == AgentRole.REVIEW for t in tasks):
+        return tasks
+    dev_tasks = [t for t in tasks if t.agent_role == AgentRole.DEV]
+    if not dev_tasks:
+        return tasks
+
+    existing_ids = {t.task_id for t in tasks}
+    review_id = "t-review"
+    suffix = 1
+    while review_id in existing_ids:
+        review_id = f"t-review-{suffix}"
+        suffix += 1
+
+    dev_paths = " ".join(t.goal for t in dev_tasks)
+    tasks.append(
+        Task(
+            task_id=review_id,
+            goal=(
+                f"Review code for: {user_goal}. "
+                f"Verify files and logic from dev work: {dev_paths}"
+            ),
+            agent_role=AgentRole.REVIEW,
+            dependencies=[t.task_id for t in dev_tasks],
+            priority=2,
+        )
+    )
+    return tasks
+
+
 def plan(goal: str, llm: LLMProvider) -> list[Task]:
     root_id = str(uuid.uuid4())[:8]
-    project_root = get_project_root()
-    prompt = PLANNER_PROMPT_TEMPLATE.format(goal=goal, project_root=project_root)
+    working_dir = get_cwd()
+    prompt = PLANNER_PROMPT_TEMPLATE.format(goal=goal, working_dir=working_dir)
     parsed = llm.structured_output(prompt, PLAN_SCHEMA)
     tasks = _parsed_to_tasks(parsed, root_id)
+    tasks = _ensure_review_task(tasks, goal)
     for task in tasks:
         print(f"Task: goal={task.goal} agentRole={task.agent_role} ")
         print(f"")

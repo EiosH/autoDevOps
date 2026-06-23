@@ -131,6 +131,26 @@ class AgentRunner:
             if response.content:
                 output = parse_finish_output(response.content)
                 if is_valid_finish_output(output, finish_schema):
+                    last_skill = next(
+                        (
+                            r
+                            for r in reversed(tool_calls_log)
+                            if r.tool_name in allowed_skills
+                        ),
+                        None,
+                    )
+                    if last_skill and last_skill.status == TaskStatus.FAILED:
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"Skill '{last_skill.tool_name}' failed: "
+                                    f"{last_skill.error or last_skill.result}. "
+                                    "Retry the skill with corrected paths before finishing."
+                                ),
+                            }
+                        )
+                        continue
                     return AgentResult(
                         agent_name=agent_name,
                         task_id=task.task_id,

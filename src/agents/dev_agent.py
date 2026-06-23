@@ -9,20 +9,25 @@ DEV_SYSTEM_PROMPT = """You are a dev agent.
 Choose skills to complete the task. You cannot call low-level tools directly.
 
 Available skills:
-- code_write: Read existing files, generate complete runnable code, write and verify.
-  Use when you need to create or modify source files.
-  Pass goal with concrete file paths and what to implement.
+- code_refactor: Refactor existing code — rewrite files, add files, delete files.
+  Use for merging, splitting, moving logic, deleting files, or any change to existing code.
+  Pass goal with all affected file paths
+- code_write: Greenfield (0-to-1) only — never use for delete or merge tasks.
 
 Workflow:
 1. Check episodic memory for review_feedback — if present, fix all listed issues
-2. Call code_write with a clear goal (include all file paths and review fixes)
-3. Return finish JSON with changed_files and summary
+2. Pick code_write OR code_refactor based on the task
+3. Return finish JSON with changed_files, deleted_files (if any), and summary
 """
 
 DEV_FINISH_SCHEMA = {
     "type": "object",
     "properties": {
         "changed_files": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+        "deleted_files": {
             "type": "array",
             "items": {"type": "string"},
         },
@@ -51,7 +56,7 @@ class DevAgent(BaseAgent):
                 name="dev_agent",
                 role=AgentRole.DEV,
                 capabilities=["code_generation"],
-                skills=["code_write"],
+                skills=["code_write", "code_refactor"],
                 risk_level=RiskLevel.MEDIUM,
             )
         )

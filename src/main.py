@@ -5,6 +5,8 @@ from tools import (
     ToolExecutor,
     ReadFileTool,
     WritePatchTool,
+    DeleteFileTool,
+    CheckFormatTool,
     GitDiffTool,
     RunTestsTool,
     ShellExecTool,
@@ -13,6 +15,7 @@ from skills import (
     SkillRegistry,
     SkillExecutor,
     CodeWriteSkill,
+    CodeRefactorSkill,
     CodeReviewSkill,
     RunTestSkill,
 )
@@ -25,6 +28,8 @@ def main():
     toolRegistry = ToolRegistry()
     toolRegistry.register(ReadFileTool())
     toolRegistry.register(WritePatchTool())
+    toolRegistry.register(DeleteFileTool())
+    toolRegistry.register(CheckFormatTool())
     toolRegistry.register(GitDiffTool())
     toolRegistry.register(RunTestsTool())
     toolRegistry.register(ShellExecTool())
@@ -32,6 +37,7 @@ def main():
 
     skillRegistry = SkillRegistry()
     skillRegistry.register(CodeWriteSkill())
+    skillRegistry.register(CodeRefactorSkill())
     skillRegistry.register(CodeReviewSkill())
     skillRegistry.register(RunTestSkill())
 
@@ -46,7 +52,8 @@ def main():
     scheduler.register_agent(test)
     scheduler.register_agent(review)
     # user_goal = "在根目录里新建 workspace 文件夹，在里面实现 workspace/index.html 和 workspace/index.js 文件，做一个扫雷小游戏。实现完成后检查代码，确保不出问题"
-    user_goal = "读取 workspace 下的 index.html、index.js文件，合并成一个，并且检查逻辑，然后完善"
+    user_goal = """1.失败之后不要怕重复弹出 “game over” 提示 2.支持新功能，等待玩家按下空格键开始
+    """
     run_id = "run1"
     tasks = plan(user_goal, llm=llm)
     snapshots = scheduler.execute_task_graph(run_id, tasks, user_goal=user_goal)

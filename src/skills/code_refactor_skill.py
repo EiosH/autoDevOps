@@ -4,50 +4,57 @@ import os
 from core.models import SkillSpec, TaskStatus
 from engine.llm import LLMProvider
 from skills.base import BaseSkill, SkillResult
-from skills.path_utils import extract_paths
+from skills.path_utils import resolve_paths_for_goal
 from tools.executor import ToolExecutor
 
-CODE_SCHEMA = {
+REFACTOR_SCHEMA = {
     "type": "object",
     "properties": {
-        "files": {
+        "changes": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["write", "delete"],
+                    },
                     "path": {"type": "string"},
                     "content": {"type": "string"},
                 },
-                "required": ["path", "content"],
+                "required": ["action", "path"],
             },
         },
         "summary": {"type": "string"},
     },
-    "required": ["files", "summary"],
+    "required": ["changes", "summary"],
 }
 
-GENERATE_PROMPT = """You are a code generation assistant.
+REFACTOR_PROMPT = """You are a code refactoring assistant.
 
 Task:
 {goal}
 
-Existing files (empty string means file does not exist yet):
+Existing files (empty string means file does not exist):
 {existing}
 
 Rules:
-- Return complete, runnable file contents (no placeholders or TODO-only stubs)
-- Include every file path needed to fulfill the task
+- Use action "write" to create or update a file (provide full content)
+- Use action "delete" to remove obsolete files (no content needed)
+- Apply logical order: write merged/updated files before deleting sources
+- Return complete, runnable file contents for writes (no placeholders)
 - Paths must be relative to the current working directory
+- Update references in remaining files when deleting dependencies
 """
 
 
-class CodeWriteSkill(BaseSkill):
+class CodeRefactorSkill(BaseSkill):
     def __init__(self) -> None:
         self.spec = SkillSpec(
-            name="code_write",
+            name="code_refactor",
             description=(
-                "Greenfield code generation: create new files from scratch "
-                "(0-to-1). Use when no existing code needs restructuring."
+                "Refactor existing code: rewrite files, add new files, "
+                "or delete obsolete files"
             ),
             input_schema={
                 "type": "object",
@@ -55,9 +62,14 @@ class CodeWriteSkill(BaseSkill):
                     "goal": {
                         "type": "string",
                         "description": (
-                            "What to implement or change; include concrete file paths"
+                            "Refactoring goal; include all affected file paths"
                         ),
-                    }
+                    },
+                    "paths": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional explicit list of files involved",
+                    },
                 },
                 "required": ["goal"],
             },
@@ -70,10 +82,11 @@ class CodeWriteSkill(BaseSkill):
         **kwargs,
     ) -> SkillResult:
         goal = kwargs.get("goal", "")
+        extra_paths = kwargs.get("paths") or []
         tool_calls: list = []
-        paths = extract_paths(goal)
-        existing: dict[str, str] = {}
 
+        paths = resolve_paths_for_goal(goal, list(extra_paths))
+        existing: dict[str, str] = {}
         for path in paths:
             record = executor.execute("read_file", path=path)
             tool_calls.append(record)
@@ -82,30 +95,32 @@ class CodeWriteSkill(BaseSkill):
             else:
                 existing[path] = ""
 
-        prompt = GENERATE_PROMPT.format(
+        prompt = REFACTOR_PROMPT.format(
             goal=goal,
             existing=json.dumps(existing, ensure_ascii=False, indent=2),
         )
         try:
-            generated = llm.structured_output(prompt, CODE_SCHEMA)
+            plan = llm.structured_output(prompt, REFACTOR_SCHEMA)
         except Exception as e:
             return SkillResult(
                 success=False,
                 output={},
-                error=f"LLM generation failed: {e}",
+                error=f"LLM refactor planning failed: {e}",
                 tool_calls=tool_calls,
             )
 
+        changes = plan.get("changes", [])
+        writes = [c for c in changes if c.get("action") == "write"]
+        deletes = [c for c in changes if c.get("action") == "delete"]
+
         changed_files: list[str] = []
-        for item in generated.get("files", []):
+        deleted_files: list[str] = []
+
+        for item in writes:
             path = item.get("path", "")
             content = item.get("content", "")
             if not path:
                 continue
-
-            parent = os.path.dirname(path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
 
             write_rec = executor.execute("write_patch", path=path, content=content)
             tool_calls.append(write_rec)
@@ -121,14 +136,31 @@ class CodeWriteSkill(BaseSkill):
             ):
                 changed_files.append(path)
 
+        for item in deletes:
+            path = item.get("path", "")
+            if not path:
+                continue
+
+            delete_rec = executor.execute("delete_file", path=path)
+            tool_calls.append(delete_rec)
+            if delete_rec.status != TaskStatus.SUCCESS:
+                continue
+
+            if not os.path.isfile(path):
+                deleted_files.append(path)
+
         diff_rec = executor.execute("git_diff")
         tool_calls.append(diff_rec)
 
-        if not changed_files:
+        if not changed_files and not deleted_files:
             return SkillResult(
                 success=False,
-                output={"changed_files": [], "summary": generated.get("summary", "")},
-                error="No files were written successfully",
+                output={
+                    "changed_files": [],
+                    "deleted_files": [],
+                    "summary": plan.get("summary", ""),
+                },
+                error="No files were changed or deleted successfully",
                 tool_calls=tool_calls,
             )
 
@@ -136,7 +168,8 @@ class CodeWriteSkill(BaseSkill):
             success=True,
             output={
                 "changed_files": changed_files,
-                "summary": generated.get("summary", ""),
+                "deleted_files": deleted_files,
+                "summary": plan.get("summary", ""),
             },
             tool_calls=tool_calls,
         )

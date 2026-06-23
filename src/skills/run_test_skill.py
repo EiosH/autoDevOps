@@ -1,7 +1,7 @@
 from core.models import SkillSpec, TaskStatus
 from engine.llm import LLMProvider
 from skills.base import BaseSkill, SkillResult
-from skills.code_write_skill import extract_paths
+from skills.path_utils import extract_paths
 from tools.executor import ToolExecutor
 
 
