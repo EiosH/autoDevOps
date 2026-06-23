@@ -2,6 +2,7 @@ import json
 from typing import List
 
 from core.models import (
+    AgentRole,
     Task,
     StepSnapshot,
     TaskStatus,
@@ -23,11 +24,13 @@ class ThinHarnessScheduler:
     agents: List[BaseAgent]
     snapshots: List[StepSnapshot]
     max_retries: int
+    max_fix_cycles: int
 
-    def __init__(self, max_retries=10):
+    def __init__(self, max_retries=3, max_fix_cycles=3):
         self.agents = []
         self.snapshots = []
         self.max_retries = max_retries
+        self.max_fix_cycles = max_fix_cycles
 
     def register_agent(self, agent: BaseAgent):
         self.agents.append(agent)
@@ -38,7 +41,9 @@ class ThinHarnessScheduler:
                 return agent
         raise ValueError(f"No agent found for role: {task.agent_role}")
 
-    def execute_task(self, run_id, task, ctx: RunContext, attempt=1):
+    def execute_task(
+        self, run_id, task, ctx: RunContext, attempt=1, auto_retry=True
+    ):
         agent = self.find_agent(task)
         try:
             result = agent.run(task, ctx)
@@ -62,8 +67,14 @@ class ThinHarnessScheduler:
         self.snapshots.append(snapshot)
         if result.status == TaskStatus.SUCCESS:
             self._record_episodic(ctx, snapshot)
-        if result.status == TaskStatus.FAILED and attempt <= self.max_retries:
-            return self.execute_task(run_id, task, ctx, attempt + 1)
+        if (
+            result.status == TaskStatus.FAILED
+            and auto_retry
+            and attempt < self.max_retries
+        ):
+            return self.execute_task(
+                run_id, task, ctx, attempt + 1, auto_retry=auto_retry
+            )
         return snapshot
 
     def is_task_ready(self, task: Task, ctx: RunContext):
@@ -76,16 +87,52 @@ class ThinHarnessScheduler:
         }
         return all(dep in finished_success_task_ids for dep in task.dependencies)
 
-    def execute_task_graph(self, run_id, tasks: List[Task], user_goal: str = ""):
-        ctx = RunContext(run_id=run_id, user_goal=user_goal)
-        pending_tasks = list(tasks)
+    def _latest_snapshot(
+        self, ctx: RunContext, task_id: str
+    ) -> StepSnapshot | None:
+        matches = [s for s in ctx.snapshots if s.task.task_id == task_id]
+        return matches[-1] if matches else None
+
+    def _review_needs_fix(self, snapshot: StepSnapshot) -> bool:
+        if snapshot.result.status == TaskStatus.FAILED:
+            return True
+        if snapshot.result.output.get("approved") is False:
+            return True
+        return False
+
+    def _record_review_feedback(self, ctx: RunContext, snapshot: StepSnapshot):
+        ctx.episodic.append(
+            MemoryRecord(
+                memory_id=f"{ctx.run_id}:{snapshot.task.task_id}:review_feedback",
+                memory_type=MemoryType.EPISODIC,
+                content=json.dumps(
+                    {
+                        "type": "review_feedback",
+                        "task_id": snapshot.task.task_id,
+                        "approved": snapshot.result.output.get("approved"),
+                        "issues": snapshot.result.output.get("issues", []),
+                        "summary": snapshot.result.output.get("summary"),
+                        "error": snapshot.result.error,
+                    },
+                    ensure_ascii=False,
+                ),
+                source="scheduler",
+                metadata={"task_id": snapshot.task.task_id},
+            )
+        )
+
+    def _run_dag(self, run_id: str, tasks: List[Task], ctx: RunContext):
         results = []
+        pending_tasks = list(tasks)
         while pending_tasks:
             next_pending_tasks = []
             progressed = False
             for task in pending_tasks:
                 if self.is_task_ready(task, ctx):
-                    snapshot = self.execute_task(run_id, task, ctx)
+                    auto_retry = task.agent_role != AgentRole.REVIEW
+                    snapshot = self.execute_task(
+                        run_id, task, ctx, auto_retry=auto_retry
+                    )
                     results.append(snapshot)
                     progressed = True
                 else:
@@ -94,8 +141,55 @@ class ThinHarnessScheduler:
                 raise ValueError(
                     "Task graph cannot progress, possible cyclic or missing dependency"
                 )
-
             pending_tasks = next_pending_tasks
+        return results
+
+    def _dev_review_fix_loop(
+        self, run_id: str, tasks: List[Task], ctx: RunContext
+    ):
+        review_tasks = [t for t in tasks if t.agent_role == AgentRole.REVIEW]
+        for review_task in review_tasks:
+            dev_tasks = [
+                t
+                for t in tasks
+                if t.task_id in review_task.dependencies
+                and t.agent_role == AgentRole.DEV
+            ]
+            if not dev_tasks:
+                continue
+
+            for cycle in range(1, self.max_fix_cycles + 1):
+                last_review = self._latest_snapshot(ctx, review_task.task_id)
+                if last_review is None or not self._review_needs_fix(last_review):
+                    break
+
+                self._record_review_feedback(ctx, last_review)
+                print(
+                    f"\nfix cycle {cycle}/{self.max_fix_cycles}: "
+                    f"review failed, re-running dev then review"
+                )
+
+                for dev_task in dev_tasks:
+                    self.execute_task(
+                        run_id,
+                        dev_task,
+                        ctx,
+                        attempt=cycle + 1,
+                        auto_retry=False,
+                    )
+
+                self.execute_task(
+                    run_id,
+                    review_task,
+                    ctx,
+                    attempt=cycle + 1,
+                    auto_retry=False,
+                )
+
+    def execute_task_graph(self, run_id, tasks: List[Task], user_goal: str = ""):
+        ctx = RunContext(run_id=run_id, user_goal=user_goal)
+        results = self._run_dag(run_id, tasks, ctx)
+        self._dev_review_fix_loop(run_id, tasks, ctx)
         return results
 
     def build_report(self, run_id):

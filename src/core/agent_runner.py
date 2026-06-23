@@ -8,16 +8,16 @@ from engine.content_parse import (
     parse_finish_output,
 )
 from engine.llm import LLMProvider
-from tools.executor import ToolExecutor
-from tools.registry import ToolRegistry
+from skills.executor import SkillExecutor
+from skills.registry import SkillRegistry
 
 
-def specs_to_openai_tools(
-    registry: ToolRegistry, allowed_tools: list[str]
+def skill_specs_to_openai_tools(
+    registry: SkillRegistry, allowed_skills: list[str]
 ) -> list[dict]:
     tools = []
-    for spec in registry.list_tools():
-        if spec.name not in allowed_tools:
+    for spec in registry.list_skills():
+        if spec.name not in allowed_skills:
             continue
         tools.append(
             {
@@ -38,8 +38,8 @@ class AgentRunner:
     def run_loop(
         self,
         llm: LLMProvider,
-        tool_executor: ToolExecutor,
-        allowed_tools: list[str],
+        skill_executor: SkillExecutor,
+        allowed_skills: list[str],
         task: Task,
         agent_name: str,
         system_prompt: str,
@@ -53,7 +53,7 @@ class AgentRunner:
 
         finish_example = example_from_finish_schema(finish_schema)
         finish_instruction = (
-            "When you are done and need no more tools, respond with ONLY a JSON object "
+            "When you are done and need no more skills, respond with ONLY a JSON object "
             "containing actual results (NOT a JSON Schema definition). Example:\n"
             + json.dumps(finish_example, ensure_ascii=False)
         )
@@ -63,10 +63,11 @@ class AgentRunner:
             {"role": "user", "content": user_message},
         ]
 
-        openai_tools = specs_to_openai_tools(tool_executor.registry, allowed_tools)
+        openai_tools = skill_specs_to_openai_tools(
+            skill_executor.registry, allowed_skills
+        )
         print(f"\nagent {agent_name}----------")
 
-        # print("allowed tools:", [t["function"]["name"] for t in openai_tools])
         for _ in range(max_steps):
             response = llm.chat_with_tools(messages, openai_tools)
             token_cost += response.usage.get("total_tokens", 0)
@@ -90,26 +91,32 @@ class AgentRunner:
                     }
                 )
                 for call in response.tool_calls:
-                    if call.name not in allowed_tools:
+                    if call.name not in allowed_skills:
                         record = ToolCallRecord(
                             tool_name=call.name,
                             arguments=call.arguments,
                             status=TaskStatus.FAILED,
                             error=(
-                                f"Tool '{call.name}' is not available. "
-                                f"Use only: {allowed_tools}. "
-                                "When the task is complete, do NOT call a tool; "
+                                f"Skill '{call.name}' is not available. "
+                                f"Use only: {allowed_skills}. "
+                                "When the task is complete, do NOT call a skill; "
                                 "respond with the finish JSON object instead."
                             ),
                         )
+                        inner_calls: list[ToolCallRecord] = []
                     else:
-                        record = tool_executor.execute(call.name, **call.arguments)
-                        print(
-                            f"call tool: name:{call.name} argument:{call.arguments}",
+                        record, inner_calls = skill_executor.execute(
+                            call.name, **call.arguments
                         )
+                        print(
+                            f"call skill: name:{call.name} argument:{call.arguments}",
+                        )
+
                     tool_calls_log.append(record)
+                    tool_calls_log.extend(inner_calls)
                     if ctx is not None:
                         ctx.tool_trace.append(record)
+                        ctx.tool_trace.extend(inner_calls)
                     messages.append(
                         {
                             "role": "tool",
@@ -121,8 +128,6 @@ class AgentRunner:
                     )
                 continue
 
-            # print("response content:", response.content)
-            # print("response called tools:", response.tool_calls)
             if response.content:
                 output = parse_finish_output(response.content)
                 if is_valid_finish_output(output, finish_schema):

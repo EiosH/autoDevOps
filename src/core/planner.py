@@ -40,9 +40,9 @@ Project context:
     If the user does not specify a directory, the default directory is the project root directory.
 
 Available agents (agent_role must be one of these):
-- dev: read/write code, fix bugs (tools: read_file, write_patch, git_diff, shell_exec)
-- test: write/run tests (tools: read_file, write_patch, run_tests) — skip if no tests apply
-- review: read-only code review (tools: read_file, git_diff)
+- dev: read/write code, fix bugs (skills: code_write)
+- test: run tests (skills: run_test) — skip if no tests apply
+- review: code review (skills: code_review)
 
 Rules:
 1. Return a JSON object matching the schema with a "tasks" array

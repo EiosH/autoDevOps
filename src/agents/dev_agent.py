@@ -2,24 +2,21 @@ from agents.base import BaseAgent
 from core.agent_runner import AgentRunner
 from core.models import AgentCard, AgentResult, AgentRole, RiskLevel, RunContext, Task
 from engine.llm import LLMProvider
-from tools.executor import ToolExecutor
+from skills.executor import SkillExecutor
 
 DEV_SYSTEM_PROMPT = """You are a dev agent.
 
-Mandatory workflow:
-1. read_file — ALWAYS read target files before writing (even for new files, check if path exists)
-2. write_patch — write COMPLETE runnable content; never leave placeholders
-3. read_file — verify each written file is non-empty
-4. git_diff — confirm changes
+Choose skills to complete the task. You cannot call low-level tools directly.
 
-Completion rules (you MUST satisfy ALL before finish JSON):
-- Every file listed in the goal must exist on disk
-- You must have at least one successful write_patch per changed file
-- For browser games: HTML must include game UI; JS must contain game logic (not just comments)
-- Do NOT return finish JSON until verification reads succeed
+Available skills:
+- code_write: Read existing files, generate complete runnable code, write and verify.
+  Use when you need to create or modify source files.
+  Pass goal with concrete file paths and what to implement.
 
-If the goal mentions multiple files, write ALL of them in this task.
-
+Workflow:
+1. Check episodic memory for review_feedback — if present, fix all listed issues
+2. Call code_write with a clear goal (include all file paths and review fixes)
+3. Return finish JSON with changed_files and summary
 """
 
 DEV_FINISH_SCHEMA = {
@@ -37,24 +34,24 @@ DEV_FINISH_SCHEMA = {
 
 class DevAgent(BaseAgent):
     llm: LLMProvider
-    tool_executor: ToolExecutor
+    skill_executor: SkillExecutor
     runner: AgentRunner
 
     def __init__(
         self,
         llm: LLMProvider,
-        tool_executor: ToolExecutor,
+        skill_executor: SkillExecutor,
         runner: AgentRunner | None = None,
     ) -> None:
         self.llm = llm
-        self.tool_executor = tool_executor
+        self.skill_executor = skill_executor
         self.runner = runner or AgentRunner()
         super().__init__(
             AgentCard(
                 name="dev_agent",
                 role=AgentRole.DEV,
                 capabilities=["code_generation"],
-                tools=["read_file", "write_patch", "git_diff", "shell_exec"],
+                skills=["code_write"],
                 risk_level=RiskLevel.MEDIUM,
             )
         )
@@ -62,8 +59,8 @@ class DevAgent(BaseAgent):
     def run(self, task: Task, ctx: RunContext) -> AgentResult:
         return self.runner.run_loop(
             llm=self.llm,
-            tool_executor=self.tool_executor,
-            allowed_tools=self.card.tools,
+            skill_executor=self.skill_executor,
+            allowed_skills=self.card.skills,
             task=task,
             agent_name=self.card.name,
             system_prompt=DEV_SYSTEM_PROMPT,

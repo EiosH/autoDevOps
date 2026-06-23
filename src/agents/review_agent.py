@@ -10,18 +10,19 @@ from core.models import (
     TaskStatus,
 )
 from engine.llm import LLMProvider
-from tools.executor import ToolExecutor
+from skills.executor import SkillExecutor
 
 REVIEW_SYSTEM_PROMPT = """You are a code review agent.
 
-Use the provided tools to complete the task. The model will invoke tools natively.
+Choose skills to complete the task. You cannot call low-level tools directly.
+
+Available skills:
+- code_review: Inspect git diff and file contents, produce a review.
+  Pass goal describing what to review.
 
 Workflow:
-1. git_diff — inspect all changes
-2. read_file — read specific files if needed
-
-Do NOT modify files. Review for correctness, maintainability, and completeness.
-Mark approved=false if there are high-severity issues.
+1. Call code_review with a clear goal
+2. Return finish JSON with approved, issues, and summary from the skill result
 """
 
 REVIEW_FINISH_SCHEMA = {
@@ -51,24 +52,24 @@ REVIEW_FINISH_SCHEMA = {
 
 class ReviewAgent(BaseAgent):
     llm: LLMProvider
-    tool_executor: ToolExecutor
+    skill_executor: SkillExecutor
     runner: AgentRunner
 
     def __init__(
         self,
         llm: LLMProvider,
-        tool_executor: ToolExecutor,
+        skill_executor: SkillExecutor,
         runner: AgentRunner | None = None,
     ) -> None:
         self.llm = llm
-        self.tool_executor = tool_executor
+        self.skill_executor = skill_executor
         self.runner = runner or AgentRunner()
         super().__init__(
             AgentCard(
                 name="review_agent",
                 role=AgentRole.REVIEW,
                 capabilities=["code_review", "risk_analysis"],
-                tools=["read_file", "git_diff"],
+                skills=["code_review"],
                 risk_level=RiskLevel.LOW,
             )
         )
@@ -76,8 +77,8 @@ class ReviewAgent(BaseAgent):
     def run(self, task: Task, ctx: RunContext) -> AgentResult:
         result = self.runner.run_loop(
             llm=self.llm,
-            tool_executor=self.tool_executor,
-            allowed_tools=self.card.tools,
+            skill_executor=self.skill_executor,
+            allowed_skills=self.card.skills,
             task=task,
             agent_name=self.card.name,
             system_prompt=REVIEW_SYSTEM_PROMPT,

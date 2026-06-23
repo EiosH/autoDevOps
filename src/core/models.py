@@ -57,7 +57,7 @@ class AgentCard(BaseModel):
     name: str
     role: AgentRole
     capabilities: List[str] = Field(default_factory=list)
-    tools: List[str] = Field(default_factory=list)
+    skills: List[str] = Field(default_factory=list)
     model_preference: Optional[str] = None
     risk_level: RiskLevel = RiskLevel.LOW
 
@@ -151,4 +151,10 @@ class ToolSpec(BaseModel):
     name: str
     description: str
     risk_level: RiskLevel
+    input_schema: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SkillSpec(BaseModel):
+    name: str
+    description: str
     input_schema: Dict[str, Any] = Field(default_factory=dict)

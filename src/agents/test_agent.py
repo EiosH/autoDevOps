@@ -10,18 +10,19 @@ from core.models import (
     TaskStatus,
 )
 from engine.llm import LLMProvider
-from tools.executor import ToolExecutor
+from skills.executor import SkillExecutor
 
 TEST_SYSTEM_PROMPT = """You are a test agent.
 
-Use the provided tools to complete the task. The model will invoke tools natively.
+Choose skills to complete the task. You cannot call low-level tools directly.
+
+Available skills:
+- run_test: Read source files and run pytest.
+  Pass goal describing what to verify; optionally pass test_path.
 
 Workflow:
-1. read_file — read upstream dev changes and source files
-2. write_patch — create or update test files
-3. run_tests — execute tests (pass test_path, e.g. /tests)
-
-If tests fail, read relevant files and fix tests or report failure clearly.
+1. Call run_test with a clear goal
+2. Return finish JSON with passed and summary from the skill result
 """
 
 TEST_FINISH_SCHEMA = {
@@ -37,24 +38,24 @@ TEST_FINISH_SCHEMA = {
 
 class TestAgent(BaseAgent):
     llm: LLMProvider
-    tool_executor: ToolExecutor
+    skill_executor: SkillExecutor
     runner: AgentRunner
 
     def __init__(
         self,
         llm: LLMProvider,
-        tool_executor: ToolExecutor,
+        skill_executor: SkillExecutor,
         runner: AgentRunner | None = None,
     ) -> None:
         self.llm = llm
-        self.tool_executor = tool_executor
+        self.skill_executor = skill_executor
         self.runner = runner or AgentRunner()
         super().__init__(
             AgentCard(
                 name="test_agent",
                 role=AgentRole.TEST,
                 capabilities=["test_generation", "test_execution"],
-                tools=["read_file", "write_patch", "run_tests"],
+                skills=["run_test"],
                 risk_level=RiskLevel.MEDIUM,
             )
         )
@@ -62,8 +63,8 @@ class TestAgent(BaseAgent):
     def run(self, task: Task, ctx: RunContext) -> AgentResult:
         result = self.runner.run_loop(
             llm=self.llm,
-            tool_executor=self.tool_executor,
-            allowed_tools=self.card.tools,
+            skill_executor=self.skill_executor,
+            allowed_skills=self.card.skills,
             task=task,
             agent_name=self.card.name,
             system_prompt=TEST_SYSTEM_PROMPT,

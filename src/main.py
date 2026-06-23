@@ -9,7 +9,13 @@ from tools import (
     RunTestsTool,
     ShellExecTool,
 )
-from core.models import Task, AgentRole
+from skills import (
+    SkillRegistry,
+    SkillExecutor,
+    CodeWriteSkill,
+    CodeReviewSkill,
+    RunTestSkill,
+)
 from core.planner import plan
 from engine.ollama_provider import OllamaProvider
 from engine.vllm_provider import vLLMProvider
@@ -23,11 +29,18 @@ def main():
     toolRegistry.register(RunTestsTool())
     toolRegistry.register(ShellExecTool())
     toolExecutor = ToolExecutor(toolRegistry)
+
+    skillRegistry = SkillRegistry()
+    skillRegistry.register(CodeWriteSkill())
+    skillRegistry.register(CodeReviewSkill())
+    skillRegistry.register(RunTestSkill())
+
     llm = OllamaProvider()
     # llm = vLLMProvider()
-    devAgent = DevAgent(llm, toolExecutor)
-    test = TestAgent(llm, toolExecutor)
-    review = ReviewAgent(llm, toolExecutor)
+    skillExecutor = SkillExecutor(skillRegistry, toolExecutor, llm)
+    devAgent = DevAgent(llm, skillExecutor)
+    test = TestAgent(llm, skillExecutor)
+    review = ReviewAgent(llm, skillExecutor)
     scheduler = ThinHarnessScheduler()
     scheduler.register_agent(devAgent)
     scheduler.register_agent(test)
