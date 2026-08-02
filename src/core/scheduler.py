@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from core.models import (
     AgentRole,
@@ -11,6 +11,9 @@ from core.models import (
     RunContext,
 )
 from agents.base import BaseAgent
+
+if TYPE_CHECKING:
+    from memory.long_term import LongTermMemoryManager
 
 
 def is_snapshot_succeed(snapshot: StepSnapshot):
@@ -24,11 +27,17 @@ class ThinHarnessScheduler:
     max_retries: int
     max_fix_cycles: int
 
-    def __init__(self, max_retries=3, max_fix_cycles=3):
+    def __init__(
+        self,
+        max_retries=3,
+        max_fix_cycles=3,
+        long_term_memory: "LongTermMemoryManager | None" = None,
+    ):
         self.agents = []
         self.snapshots = []
         self.max_retries = max_retries
         self.max_fix_cycles = max_fix_cycles
+        self.long_term_memory = long_term_memory
 
     def register_agent(self, agent: BaseAgent):
         self.agents.append(agent)
@@ -183,8 +192,16 @@ class ThinHarnessScheduler:
 
     def execute_task_graph(self, run_id, tasks: List[Task], user_goal: str = ""):
         ctx = RunContext(run_id=run_id, user_goal=user_goal)
+        if self.long_term_memory is not None:
+            ctx.long_term = self.long_term_memory.recall(user_goal)
+            if ctx.long_term:
+                print(f"\nrecalled {len(ctx.long_term)} long-term memories")
         results = self._run_dag(run_id, tasks, ctx)
         self._dev_review_fix_loop(run_id, tasks, ctx)
+        if self.long_term_memory is not None:
+            saved = self.long_term_memory.promote(ctx)
+            if saved:
+                print(f"\npromoted {len(saved)} long-term memories")
         return results
 
     def build_report(self, run_id):

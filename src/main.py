@@ -22,6 +22,7 @@ from skills import (
 from core.planner import plan
 from engine.ollama_provider import OllamaProvider
 from engine.vllm_provider import vLLMProvider
+from memory import LongTermMemoryManager, create_memory_store
 
 
 def main():
@@ -44,10 +45,16 @@ def main():
     llm = OllamaProvider()
     # llm = vLLMProvider()
     skillExecutor = SkillExecutor(skillRegistry, toolExecutor, llm)
+    memory_store = create_memory_store()
+    long_term_memory = LongTermMemoryManager(
+        llm,
+        memory_store,
+        project_id="autoDevOps",
+    )
     devAgent = DevAgent(llm, skillExecutor)
     test = TestAgent(llm, skillExecutor)
     review = ReviewAgent(llm, skillExecutor)
-    scheduler = ThinHarnessScheduler()
+    scheduler = ThinHarnessScheduler(long_term_memory=long_term_memory)
     scheduler.register_agent(devAgent)
     scheduler.register_agent(test)
     scheduler.register_agent(review)

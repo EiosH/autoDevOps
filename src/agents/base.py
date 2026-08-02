@@ -2,6 +2,7 @@ import json
 from abc import ABC, abstractmethod
 
 from core.models import AgentCard, AgentResult, RunContext, Task
+from memory.long_term import format_long_term_record
 
 
 class BaseAgent(ABC):
@@ -24,6 +25,11 @@ class BaseAgent(ABC):
             parts.append(
                 "Upstream task outputs:\n"
                 + json.dumps(upstream, ensure_ascii=False, indent=2)
+            )
+        if ctx.long_term:
+            parts.append(
+                "Long-term memory (relevant knowledge from past runs):\n"
+                + "\n".join(format_long_term_record(record) for record in ctx.long_term)
             )
         if ctx.episodic:
             parts.append(

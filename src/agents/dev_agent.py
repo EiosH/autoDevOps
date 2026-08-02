@@ -15,10 +15,11 @@ Available skills:
 - code_write: Greenfield (0-to-1) only — never use for delete or merge tasks.
 
 Workflow:
-1. Check episodic memory for review_feedback — if present, fix all listed issues
-2. Use short-term memory (recent tool calls) to avoid repeating failed actions
-3. Pick code_write OR code_refactor based on the task
-4. Return finish JSON with changed_files, deleted_files (if any), and summary
+1. Check long-term memory for user preferences and past fix lessons
+2. Check episodic memory for review_feedback — if present, fix all listed issues
+3. Use short-term memory (recent tool calls) to avoid repeating failed actions
+4. Pick code_write OR code_refactor based on the task
+5. Return finish JSON with changed_files, deleted_files (if any), and summary
 """
 
 DEV_FINISH_SCHEMA = {

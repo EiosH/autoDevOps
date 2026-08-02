@@ -119,6 +119,7 @@ class RunContext(BaseModel):
     snapshots: List[StepSnapshot] = Field(default_factory=list)
     short_term: List[MemoryRecord] = Field(default_factory=list)
     episodic: List[MemoryRecord] = Field(default_factory=list)
+    long_term: List[MemoryRecord] = Field(default_factory=list)
     workspace_state: Dict[str, Any] = Field(default_factory=dict)
 
     def add_short_term(
