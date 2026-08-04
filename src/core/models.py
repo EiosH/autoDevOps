@@ -14,14 +14,9 @@ class TaskStatus(str, Enum):
 
 
 class AgentRole(str, Enum):
-    PLANNER = "planner"
-    ARCHITECT = "architect"
     DEV = "dev"
     TEST = "test"
     REVIEW = "review"
-    DEBUG = "debug"
-    OPS = "ops"
-    EVAL = "eval"
 
 
 class RiskLevel(str, Enum):
@@ -48,18 +43,11 @@ class Task(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-# class TaskGraph(BaseModel):
-#     graph_id: str
-#     root_goal: str
-#     tasks: List[Task] = Field(default_factory=list)
-
-
 class AgentCard(BaseModel):
     name: str
     role: AgentRole
     capabilities: List[str] = Field(default_factory=list)
     skills: List[str] = Field(default_factory=list)
-    model_preference: Optional[str] = None
     risk_level: RiskLevel = RiskLevel.LOW
 
 
@@ -92,24 +80,12 @@ class MemoryRecord(BaseModel):
     created_at: float = Field(default_factory=time)
 
 
-class EvaluationScore(BaseModel):
-    task_id: str
-    pass_rate: float = Field(default=0.0, ge=0.0, le=1.0)
-    code_quality: float = Field(default=0.0, ge=0.0, le=1.0)
-    rag_relevance: float = Field(default=0.0, ge=0.0, le=1.0)
-    tool_success_rate: float = Field(default=0.0, ge=0.0, le=1.0)
-    latency_ms: int = 0
-    notes: List[str] = Field(default_factory=list)
-
-
 class StepSnapshot(BaseModel):
     step_id: str
     run_id: str
     task: Task
     agent_card: AgentCard
     result: AgentResult
-    # evaluation: Optional[EvaluationScore] = None
-    # state_delta: Dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time)
 
 
@@ -120,7 +96,6 @@ class RunContext(BaseModel):
     short_term: List[MemoryRecord] = Field(default_factory=list)
     episodic: List[MemoryRecord] = Field(default_factory=list)
     long_term: List[MemoryRecord] = Field(default_factory=list)
-    workspace_state: Dict[str, Any] = Field(default_factory=dict)
 
     def add_short_term(
         self,
@@ -218,3 +193,4 @@ class SkillSpec(BaseModel):
     name: str
     description: str
     input_schema: Dict[str, Any] = Field(default_factory=dict)
+    allowed_tools: List[str] = Field(default_factory=list)

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 from core.models import SkillSpec, ToolCallRecord
 from engine.llm import LLMProvider
-from tools.executor import ToolExecutor
+from protocols.mcp.client import McpClient
 
 
 @dataclass
@@ -19,6 +19,9 @@ class BaseSkill(ABC):
 
     @abstractmethod
     def execute(
-        self, executor: ToolExecutor, llm: LLMProvider, **kwargs
+        self,
+        mcp: McpClient,
+        llm: LLMProvider,
+        **kwargs,
     ) -> SkillResult:
         pass

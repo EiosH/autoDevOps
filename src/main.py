@@ -2,14 +2,12 @@ from core.scheduler import ThinHarnessScheduler
 from agents import DevAgent, ReviewAgent, TestAgent
 from tools import (
     ToolRegistry,
-    ToolExecutor,
     ReadFileTool,
     WritePatchTool,
     DeleteFileTool,
     CheckFormatTool,
     GitDiffTool,
     RunTestsTool,
-    ShellExecTool,
 )
 from skills import (
     SkillRegistry,
@@ -19,53 +17,48 @@ from skills import (
     CodeReviewSkill,
     RunTestSkill,
 )
+from protocols.mcp import LocalMcpClient, LocalMcpServer
 from core.planner import plan
 from engine.ollama_provider import OllamaProvider
-from engine.vllm_provider import vLLMProvider
 from memory import LongTermMemoryManager, create_memory_store
 
 
 def main():
-    toolRegistry = ToolRegistry()
-    toolRegistry.register(ReadFileTool())
-    toolRegistry.register(WritePatchTool())
-    toolRegistry.register(DeleteFileTool())
-    toolRegistry.register(CheckFormatTool())
-    toolRegistry.register(GitDiffTool())
-    toolRegistry.register(RunTestsTool())
-    toolRegistry.register(ShellExecTool())
-    toolExecutor = ToolExecutor(toolRegistry)
+    tool_registry = ToolRegistry()
+    tool_registry.register(ReadFileTool())
+    tool_registry.register(WritePatchTool())
+    tool_registry.register(DeleteFileTool())
+    tool_registry.register(CheckFormatTool())
+    tool_registry.register(GitDiffTool())
+    tool_registry.register(RunTestsTool())
 
-    skillRegistry = SkillRegistry()
-    skillRegistry.register(CodeWriteSkill())
-    skillRegistry.register(CodeRefactorSkill())
-    skillRegistry.register(CodeReviewSkill())
-    skillRegistry.register(RunTestSkill())
+    mcp = LocalMcpClient(LocalMcpServer(tool_registry))
+
+    skill_registry = SkillRegistry()
+    skill_registry.register(CodeWriteSkill())
+    skill_registry.register(CodeRefactorSkill())
+    skill_registry.register(CodeReviewSkill())
+    skill_registry.register(RunTestSkill())
 
     llm = OllamaProvider()
-    # llm = vLLMProvider()
-    skillExecutor = SkillExecutor(skillRegistry, toolExecutor, llm)
-    memory_store = create_memory_store()
+    skill_executor = SkillExecutor(skill_registry, mcp, llm)
     long_term_memory = LongTermMemoryManager(
         llm,
-        memory_store,
+        create_memory_store(),
         project_id="autoDevOps",
     )
-    devAgent = DevAgent(llm, skillExecutor)
-    test = TestAgent(llm, skillExecutor)
-    review = ReviewAgent(llm, skillExecutor)
+
     scheduler = ThinHarnessScheduler(long_term_memory=long_term_memory)
-    scheduler.register_agent(devAgent)
-    scheduler.register_agent(test)
-    scheduler.register_agent(review)
-    # user_goal = "在根目录里新建 workspace 文件夹，在里面实现 workspace/index.html 和 workspace/index.js 文件，做一个扫雷小游戏。实现完成后检查代码，确保不出问题"
+    scheduler.register_agent(DevAgent(llm, skill_executor))
+    scheduler.register_agent(TestAgent(llm, skill_executor))
+    scheduler.register_agent(ReviewAgent(llm, skill_executor))
+
     user_goal = """1.失败之后不要怕重复弹出 “game over” 提示 2.支持新功能，等待玩家按下空格键开始
     """
     run_id = "run1"
     tasks = plan(user_goal, llm=llm)
-    snapshots = scheduler.execute_task_graph(run_id, tasks, user_goal=user_goal)
-    report = scheduler.build_report(run_id)
-    print(report)
+    scheduler.execute_task_graph(run_id, tasks, user_goal=user_goal)
+    print(scheduler.build_report(run_id))
 
 
 if __name__ == "__main__":

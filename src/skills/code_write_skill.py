@@ -1,142 +1,60 @@
-import json
-import os
+from core.models import SkillSpec
+from skills.prompt_skill import PromptSkill
 
-from core.models import SkillSpec, TaskStatus
-from engine.llm import LLMProvider
-from skills.base import BaseSkill, SkillResult
-from skills.path_utils import extract_paths
-from tools.executor import ToolExecutor
-
-CODE_SCHEMA = {
+FINISH_SCHEMA = {
     "type": "object",
     "properties": {
-        "files": {
+        "changed_files": {
             "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                "required": ["path", "content"],
-            },
+            "items": {"type": "string"},
         },
         "summary": {"type": "string"},
     },
-    "required": ["files", "summary"],
+    "required": ["changed_files", "summary"],
 }
 
-GENERATE_PROMPT = """You are a code generation assistant.
+SYSTEM_PROMPT = """You are a greenfield code generation skill.
 
-Task:
-{goal}
-
-Existing files (empty string means file does not exist yet):
-{existing}
+Use MCP tools to create new files from scratch (0-to-1). Prefer write_patch for new
+or updated file contents. Use read_file to check whether a path already exists.
+Use git_diff at the end to verify changes.
 
 Rules:
-- Return complete, runnable file contents (no placeholders or TODO-only stubs)
-- Include every file path needed to fulfill the task
+- Write complete, runnable file contents (no placeholders or TODO-only stubs)
 - Paths must be relative to the current working directory
+- Include every file needed to fulfill the goal
+- When finished, return JSON with changed_files and summary
 """
 
 
-class CodeWriteSkill(BaseSkill):
+class CodeWriteSkill(PromptSkill):
+    allowed_tools = ["read_file", "write_patch", "git_diff"]
+    system_prompt = SYSTEM_PROMPT
+    finish_schema = FINISH_SCHEMA
+
     def __init__(self) -> None:
-        self.spec = SkillSpec(
-            name="code_write",
-            description=(
-                "Greenfield code generation: create new files from scratch "
-                "(0-to-1). Use when no existing code needs restructuring."
-            ),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "goal": {
-                        "type": "string",
-                        "description": (
-                            "What to implement or change; include concrete file paths"
-                        ),
-                    }
+        super().__init__(
+            SkillSpec(
+                name="code_write",
+                description=(
+                    "Greenfield code generation: create new files from scratch "
+                    "(0-to-1). Use when no existing code needs restructuring."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "goal": {
+                            "type": "string",
+                            "description": (
+                                "What to implement or change; include concrete file paths"
+                            ),
+                        }
+                    },
+                    "required": ["goal"],
                 },
-                "required": ["goal"],
-            },
+            )
         )
 
-    def execute(
-        self,
-        executor: ToolExecutor,
-        llm: LLMProvider,
-        **kwargs,
-    ) -> SkillResult:
+    def build_user_message(self, **kwargs) -> str:
         goal = kwargs.get("goal", "")
-        tool_calls: list = []
-        paths = extract_paths(goal)
-        existing: dict[str, str] = {}
-
-        for path in paths:
-            record = executor.execute("read_file", path=path)
-            tool_calls.append(record)
-            if record.status == TaskStatus.SUCCESS and record.result:
-                existing[path] = record.result.get("content", "")
-            else:
-                existing[path] = ""
-
-        prompt = GENERATE_PROMPT.format(
-            goal=goal,
-            existing=json.dumps(existing, ensure_ascii=False, indent=2),
-        )
-        try:
-            generated = llm.structured_output(prompt, CODE_SCHEMA)
-        except Exception as e:
-            return SkillResult(
-                success=False,
-                output={},
-                error=f"LLM generation failed: {e}",
-                tool_calls=tool_calls,
-            )
-
-        changed_files: list[str] = []
-        for item in generated.get("files", []):
-            path = item.get("path", "")
-            content = item.get("content", "")
-            if not path:
-                continue
-
-            parent = os.path.dirname(path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-
-            write_rec = executor.execute("write_patch", path=path, content=content)
-            tool_calls.append(write_rec)
-            if write_rec.status != TaskStatus.SUCCESS:
-                continue
-
-            verify = executor.execute("read_file", path=path)
-            tool_calls.append(verify)
-            if (
-                verify.status == TaskStatus.SUCCESS
-                and verify.result
-                and verify.result.get("content")
-            ):
-                changed_files.append(path)
-
-        diff_rec = executor.execute("git_diff")
-        tool_calls.append(diff_rec)
-
-        if not changed_files:
-            return SkillResult(
-                success=False,
-                output={"changed_files": [], "summary": generated.get("summary", "")},
-                error="No files were written successfully",
-                tool_calls=tool_calls,
-            )
-
-        return SkillResult(
-            success=True,
-            output={
-                "changed_files": changed_files,
-                "summary": generated.get("summary", ""),
-            },
-            tool_calls=tool_calls,
-        )
+        return f"Goal:\n{goal}"

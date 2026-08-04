@@ -251,35 +251,3 @@ class RunTestsTool(BaseTool):
             "returncode": result.returncode
         }
 
-
-class ShellExecTool(BaseTool):
-
-    def __init__(self) -> None:
-        super().__init__(
-            ToolSpec(name="shell_exec",
-                     description="Execute shell command safely",
-                     risk_level=RiskLevel.HIGH,
-                     input_schema={
-                         "type": "object",
-                         "properties": {
-                             "command": {
-                                 "type": "string"
-                             }
-                         },
-                         "required": ["command"]
-                     }))
-
-    def run(self, **kwargs):
-        import subprocess
-        command = kwargs["command"]
-        result = subprocess.run(command,
-                                shell=True,
-                                capture_output=True,
-                                text=True,
-                                cwd=".",
-                                timeout=30)
-        return {
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-            "returncode": result.returncode
-        }

@@ -2,26 +2,26 @@ from time import time
 
 from core.models import TaskStatus, ToolCallRecord
 from engine.llm import LLMProvider
+from protocols.mcp.client import McpClient
 from skills.registry import SkillRegistry
-from tools.executor import ToolExecutor
 
 
 class SkillExecutor:
     def __init__(
         self,
         registry: SkillRegistry,
-        tool_executor: ToolExecutor,
+        mcp: McpClient,
         llm: LLMProvider,
     ) -> None:
         self.registry = registry
-        self.tool_executor = tool_executor
+        self.mcp = mcp
         self.llm = llm
 
     def execute(self, skill_name: str, **kwargs) -> tuple[ToolCallRecord, list[ToolCallRecord]]:
         skill = self.registry.get(skill_name)
         started_at = time()
         try:
-            result = skill.execute(self.tool_executor, self.llm, **kwargs)
+            result = skill.execute(self.mcp, self.llm, **kwargs)
             finished_at = time()
             record = ToolCallRecord(
                 tool_name=skill_name,

@@ -12,7 +12,7 @@ AutoDevOps is designed for private / on-prem environments. Agents plan work as a
 - **Code generation loop** — generate → review → fix until acceptance criteria are met
 - **Local LLM gateway** — swap providers without changing agents
 - **Memory system** — short-term tool traces, episodic step summaries, long-term distilled lessons
-- **Skills over raw tools** — agents choose skills; skills compose low-level tools
+- **Skills over raw tools** — agents choose prompt-based skills; each skill exposes an MCP tool whitelist for LLM function calling
 
 ## Architecture
 
@@ -20,9 +20,9 @@ AutoDevOps is designed for private / on-prem environments. Agents plan work as a
 API layer            FastAPI / WebSocket / SSE          (planned)
 Orchestration        Planner / Scheduler / AgentRunner
 Agents               DevAgent / TestAgent / ReviewAgent (+ more planned)
-Skills               code_write / code_refactor / code_review / run_test
-Tools                read_file / write_patch / delete_file / git_diff / run_tests / …
-LLM gateway          LLMProvider → Ollama / vLLM / Mock
+Skills               PromptSkills with MCP tool whitelists
+Tools                MCP-exposed: read_file / write_patch / delete_file / …
+LLM gateway          LLMProvider → Ollama / vLLM
 Memory               short-term / episodic / long-term (file or PostgreSQL)
 Data                 PostgreSQL (+ pgvector planned) / Redis (planned)
 Governance           traces / metrics / eval suite / audit / sandbox (planned)
@@ -36,10 +36,11 @@ src/
   core/         Planner, scheduler, models, agent runner
   engine/       LLMProvider implementations (Ollama, vLLM)
   memory/       Memory store, backends, long-term distillation
-  skills/       High-level workflows agents can invoke
-  tools/        Low-level tools (files, git, tests, shell)
+  protocols/    MCP client/server adapters
+  skills/       Prompt-based skills (whitelist + function calling)
+  tools/        Local tool implementations behind MCP
   utils/        Path helpers
-  main.py       Entry point wiring registry + scheduler
+  main.py       Entry point
 workspace/      Working tree agents edit for demo tasks
 ```
 
@@ -65,7 +66,7 @@ User goal
 | Short-term memory | In-run context | Recent tool calls and step state |
 | Long-term memory | PostgreSQL or file backend | Preferences, fix lessons, conventions |
 | Semantic memory | pgvector / similar (planned) | Code chunks + embeddings for repo understanding |
-| Tools | Local registry today → MCP later | Avoid hardcoding tools into agents |
+| Tools | In-process MCP over local tools | Skills bind whitelists; LLM selects tools |
 
 ## Getting started
 
@@ -124,9 +125,11 @@ Task / AgentResult / StepSnapshot / AgentCard / BaseAgent / Scheduler / MemorySt
 
 Scan → chunk → embed → vector search → (optional) rerank → context packer. Index is a **locator**, not a source of truth; agents still `read_file` before editing.
 
-### Phase 4 — MCP tool layer
+### Phase 4 — MCP tool layer (in progress)
 
-Expose tools via MCP (`read_file`, `write_file`, `search_code`, `run_tests`, `git_diff`, `shell_exec_safe`) instead of direct function calls.
+- In-process MCP server/client wraps local tools (`list_tools` / `call_tool`)
+- **Prompt-based skills**: each skill binds an MCP tool whitelist; the LLM picks tools via function calling inside the skill loop
+- Agent still selects skills; skills no longer hardcode tool sequences
 
 ### Phase 5 — Full code-generation loop
 
